@@ -79,3 +79,8 @@ memory-bank/
 .cursor/
 CLAUDE.md
 .lingma/
+
+# docs
+nul
+*.md
+!README.md
