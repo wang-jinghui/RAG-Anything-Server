@@ -1,0 +1,87 @@
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy[asyncio]==2.0.25
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+alembic==1.13.1
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
+
+# Validation & Settings
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+httpx==0.26.0
+
+# ===========================================
+# RAG Processing (Optional - for document processing & querying)
+# ===========================================
+# Core RAG library
+raganything>=0.1.0
+
+# LLM clients (choose based on your provider)
+openai>=1.0.0  # OpenAI, Azure, vLLM, LM Studio
+# ollama>=0.1.0  # Ollama (uncomment if using)
+
+# Document parsing (MinerU is default)
+mineru[core]>=0.8.0
+
+# Optional: Alternative parsers
+# docling>=2.0.0  # IBM Docling parser
+# paddleocr>=2.7.0  # OCR support
+# pypdfium2>=4.0.0  # PDF rendering for OCR
+
+# Image processing
+Pillow>=10.0.0
+
+# Text to PDF (for text file processing)
+reportlab>=4.0.0
+
+# Markdown processing
+markdown>=3.5.0
+weasyprint>=60.0  # For markdown to PDF
+pygments>=2.17.0  # Syntax highlighting
+
+# Optional: Re-ranking (improves retrieval quality)
+# FlagEmbedding>=1.2.0  # BGE re-ranking models
+
+# Optional: Progress bars
+tqdm>=4.66.0
+
+# ===========================================
+# Vector Database Clients (choose one)
+# ===========================================
+# PGVector (PostgreSQL with vector support)
+# Already included via psycopg2-binary above
+
+# Milvus (alternative vector DB)
+# pymilvus>=2.3.0
+
+# Qdrant (alternative vector DB)
+# qdrant-client>=1.7.0
+
+# Chroma (simple local vector DB, good for dev)
+# chromadb>=0.4.0
+
+# ===========================================
+# Graph Database Clients (for knowledge graph)
+# ===========================================
+# Neo4j (default graph storage)
+neo4j>=5.0.0
+
+# Apache AGE (PostgreSQL-based graph, alternative to Neo4j)
+# age>=1.0.0
+
