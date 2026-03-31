@@ -39,6 +39,7 @@ class User(Base):
     kb_access = relationship(
         "KBUserAccess",
         back_populates="user",
+        foreign_keys="KBUserAccess.user_id",
         cascade="all, delete-orphan"
     )
     
