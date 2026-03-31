@@ -61,9 +61,6 @@ class UserResponse(BaseModel):
     username: str
     is_super_admin: bool
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 class TokenResponse(BaseModel):
