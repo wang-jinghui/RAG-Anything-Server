@@ -1,7 +1,20 @@
 """
 Pytest configuration and fixtures.
 """
+import os
 import pytest
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Set test database URL from environment or use default
+TEST_DATABASE_URL = os.getenv(
+    "DATABASE_URL"
+)
+
+# Set test database URL before importing server modules
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 from typing import AsyncGenerator
