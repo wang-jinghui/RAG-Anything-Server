@@ -12,8 +12,12 @@ __pycache__/
 env/
 venv/
 
-*.env*
-.env_example
+# Environment variables (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+!.env.example
+.env.test
 
 # Build / Distribution
 dist/
