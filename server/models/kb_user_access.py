@@ -27,7 +27,7 @@ class KBUserAccess(Base):
     
     # Relationships
     knowledge_base = relationship("KnowledgeBase", back_populates="user_access")
-    user = relationship("User", back_populates="kb_access")
+    user = relationship("User", foreign_keys=[user_id], back_populates="kb_access")
     granter = relationship("User", foreign_keys=[granted_by])
     
     __table_args__ = (
