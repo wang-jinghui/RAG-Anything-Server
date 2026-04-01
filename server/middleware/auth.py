@@ -1,7 +1,7 @@
 """
 Authentication middleware for FastAPI.
 """
-from fastapi import Request, HTTPException, Security, status
+from fastapi import Request, HTTPException, Security, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -9,6 +9,7 @@ from functools import wraps
 
 from server.services.auth_service import decode_token, validate_api_key
 from server.models.user import User
+from server.models.database import get_db_session
 
 
 # HTTP Bearer token security scheme
@@ -17,7 +18,8 @@ security = HTTPBearer(auto_error=False)
 
 async def get_current_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Security(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
+    db: AsyncSession = Depends(get_db_session)
 ) -> User:
     """
     Authentication dependency that validates JWT tokens or API keys.
@@ -36,7 +38,8 @@ async def get_current_user(
     Raises:
         HTTPException: If authentication fails
     """
-    db: AsyncSession = request.state.db
+    # Get database session from dependency instead of request.state
+    # db: AsyncSession = request.state.db
     
     # Try API key first (from X-API-Key header)
     api_key = request.headers.get("X-API-Key")
