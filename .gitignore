@@ -72,8 +72,7 @@ lightrag-dev/
 gui/
 tiktoken_cache/
 
-# unit-test files
-test_*
+# unit-test files (keep all test scripts)
 
 # Cline files
 memory-bank/
@@ -88,3 +87,9 @@ CLAUDE.md
 nul
 *.md
 !README.md
+
+*.pdf
+*.txt
+!requirements.txt
+*.log
+*.json
