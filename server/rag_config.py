@@ -57,6 +57,9 @@ class EmbeddingConfig:
     base_url: str = field(default_factory=lambda: os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
     model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-3-large"))
     
+    # Azure-specific (optional)
+    azure_deployment: Optional[str] = None
+    
     # Dimensions
     embedding_dim: int = 3072  # Adjust based on model
     
@@ -171,19 +174,33 @@ class RAGConfig:
             GRAPH_STORAGE_TYPE, NEO4J_*
             WORKING_DIR, CHUNK_TOKEN_SIZE, etc.
         """
+        # Support legacy LLM_BINDING variable name for backward compatibility
+        llm_provider = os.getenv("LLM_PROVIDER")
+        if not llm_provider:
+            llm_binding = os.getenv("LLM_BINDING")
+            if llm_binding:
+                llm_provider = llm_binding
+        
+        # Support legacy EMBEDDING_BINDING variable name for backward compatibility
+        embedding_provider = os.getenv("EMBEDDING_PROVIDER")
+        if not embedding_provider:
+            embedding_binding = os.getenv("EMBEDDING_BINDING")
+            if embedding_binding:
+                embedding_provider = embedding_binding
+        
         return cls(
             llm=LLMConfig(
-                provider=os.getenv("LLM_PROVIDER", "openai"),
+                provider=llm_provider or "openai",
                 model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
                 api_key=os.getenv("OPENAI_API_KEY", ""),
-                base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                base_url=os.getenv("LLM_BINDING_HOST", "http://localhost:11434"),
                 temperature=float(os.getenv("LLM_TEMPERATURE", "0.7")),
             ),
             embedding=EmbeddingConfig(
-                provider=os.getenv("EMBEDDING_PROVIDER", "openai"),
+                provider=embedding_provider or "openai",
                 model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-large"),
                 api_key=os.getenv("OPENAI_API_KEY", ""),
-                base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                base_url=os.getenv("EMBEDDING_BINDING_HOST", "http://localhost:11434"),
                 embedding_dim=int(os.getenv("EMBEDDING_DIM", "3072")),
             ),
             vector_storage=VectorStorageConfig(

@@ -1,6 +1,13 @@
 """
 FastAPI application entry point.
 """
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
+
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -11,6 +18,8 @@ from server.config import settings
 from server.models.database import init_db, close_db, get_db_session
 from server.routers.auth import router as auth_router
 from server.routers.knowledge_bases import router as kb_router
+from server.routers.documents import router as documents_router
+from server.routers.query import router as query_router
 
 
 @asynccontextmanager
@@ -49,15 +58,9 @@ app.add_middleware(
 )
 
 
-# Middleware to add DB session to request state
-@app.middleware("http")
-async def add_db_session(request: Request, call_next):
-    """Add database session to request state for dependency injection."""
-    async for session in get_db_session():
-        request.state.db = session
-        response = await call_next(request)
-        break
-    return response
+# Note: Database session is now added via dependency injection in each route
+# instead of using middleware to avoid event loop issues in tests.
+# The get_db_session dependency should be used directly in routes.
 
 
 # Global exception handler
@@ -76,6 +79,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Include routers
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(kb_router, prefix="/api/v1")
+app.include_router(documents_router, prefix="/api/v1")
+app.include_router(query_router, prefix="/api/v1")
 
 
 # Health check endpoint
