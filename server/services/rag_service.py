@@ -8,6 +8,7 @@ import asyncio
 from typing import Dict, Optional, Any
 from uuid import UUID
 from contextlib import asynccontextmanager
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.rag_config import RAGConfig, LLMConfig, EmbeddingConfig
 from server.models.knowledge_base import KnowledgeBase
@@ -124,21 +125,20 @@ class RAGInstanceManager:
             chunk_token_size=config.chunk_token_size,
         )
         
-        # Convert to LightRAG kwargs
-        lightrag_kwargs = rag_config.to_lightrag_kwargs()
+        # Create RAGAnything config with namespace
+        from raganything.config import RAGAnythingConfig as RAGAnythingConfigObj
+        raganything_config = RAGAnythingConfigObj(
+            working_dir=namespaced_working_dir,
+            parser='mineru',
+            parse_method='auto',
+        )
         
-        # Create RAGAnything instance
+        # Create RAGAnything instance - ONLY pass config and function refs
+        # Following the official documentation pattern
         rag = RAGAnything(
-            config=type('Config', (), {
-                'working_dir': namespaced_working_dir,
-                'parse_method': 'mineru',
-                'parser': 'mineru',
-                'enable_image_processing': True,
-                '__dict__': {}
-            })(),
+            config=raganything_config,
             llm_model_func=llm_model_func or self._default_llm_func(config),
             embedding_func=embedding_func or self._default_embedding_func(config),
-            **lightrag_kwargs
         )
         
         # Initialize LightRAG
@@ -172,17 +172,29 @@ class RAGInstanceManager:
         elif config.llm.provider == "ollama":
             import ollama
             
-            async def llm_func(prompts: list[str], **kwargs) -> list[str]:
+            # Log configuration for debugging
+            print(f"\n=== OLLAMA LLM CONFIG ===")
+            print(f"Provider: {config.llm.provider}")
+            print(f"Model: {config.llm.model}")
+            print(f"Base URL: {config.llm.base_url}")
+            print(f"API Key: {'***' if config.llm.api_key else 'None'}")
+            print(f"===========================\n")
+            
+            # Create Ollama client with custom host
+            client = ollama.Client(host=config.llm.base_url)
+            
+            # Use async chat function
+            async def llm_func_async(prompts: list[str], **kwargs) -> list[str]:
                 responses = []
                 for prompt in prompts:
-                    response = await ollama.async_chat(
+                    response = client.chat(
                         model=config.llm.model,
                         messages=[{"role": "user", "content": prompt}]
                     )
                     responses.append(response['message']['content'])
                 return responses
             
-            return llm_func
+            return llm_func_async
         
         else:
             # Default: assume OpenAI-compatible API
@@ -208,6 +220,8 @@ class RAGInstanceManager:
     
     def _default_embedding_func(self, config: RAGConfig) -> Any:
         """Create default embedding function based on config."""
+        from lightrag.utils import EmbeddingFunc
+        
         if config.embedding.provider == "openai":
             from openai import AsyncOpenAI
             client = AsyncOpenAI(
@@ -227,22 +241,48 @@ class RAGInstanceManager:
                     all_embeddings.extend(batch_embeddings)
                 return all_embeddings
             
-            return embed_func
+            # Return EmbeddingFunc object, not just a function
+            return EmbeddingFunc(
+                embedding_dim=config.embedding.embedding_dim,
+                max_token_size=8192,  # Default value, not in EmbeddingConfig
+                func=embed_func,
+            )
         
         elif config.embedding.provider == "ollama":
             import ollama
+            import numpy as np
             
-            async def embed_func(texts: list[str]) -> list[list[float]]:
+            # Log configuration for debugging
+            print(f"\n=== OLLAMA EMBEDDING CONFIG ===")
+            print(f"Provider: {config.embedding.provider}")
+            print(f"Model: {config.embedding.model}")
+            print(f"Base URL: {config.embedding.base_url}")
+            print(f"API Key: {'***' if config.embedding.api_key else 'None'}")
+            print(f"==================================\n")
+            
+            # Create Ollama client with custom host
+            client = ollama.Client(host=config.embedding.base_url)
+            
+            # Use async embedding function
+            async def embed_func_async(texts: list[str]) -> list[list[float]]:
                 all_embeddings = []
                 for text in texts:
-                    response = await ollama.async_embed(
+                    response = client.embed(
                         model=config.embedding.model,
-                        prompt=text
+                        input=text
                     )
-                    all_embeddings.append(response['embeddings'][0])
-                return all_embeddings
+                    # Convert to numpy array then back to list for compatibility
+                    embedding = np.array(response['embeddings'][0])
+                    all_embeddings.append(embedding)
+                # Return as numpy array of arrays
+                return np.array(all_embeddings)
             
-            return embed_func
+            # Return EmbeddingFunc object with async function
+            return EmbeddingFunc(
+                embedding_dim=config.embedding.embedding_dim,
+                max_token_size=8192,  # Default value
+                func=embed_func_async,
+            )
         
         else:
             # Default: assume OpenAI-compatible API
@@ -264,7 +304,12 @@ class RAGInstanceManager:
                     all_embeddings.extend(batch_embeddings)
                 return all_embeddings
             
-            return embed_func
+            # Return EmbeddingFunc object, not just a function (Default OpenAI)
+            return EmbeddingFunc(
+                embedding_dim=config.embedding.embedding_dim,
+                max_token_size=8192,  # Default value
+                func=embed_func,
+            )
     
     async def close_all(self):
         """Close all RAG instances and cleanup resources."""
@@ -287,3 +332,180 @@ rag_manager = RAGInstanceManager()
 def get_rag_manager() -> RAGInstanceManager:
     """Get the global RAG instance manager."""
     return rag_manager
+
+
+async def process_document_with_raganything(
+    file_path: str,
+    kb_id: UUID,
+    doc_id: UUID,
+    db: AsyncSession,  # Added db parameter
+    parser: str = "docling",
+    parse_method: str = "auto",
+) -> dict:
+    """
+    Process a document using RAGAnything: parse and add to LightRAG.
+    
+    This is a convenience function that creates a temporary RAGAnything instance,
+    processes the document, and returns the result.
+    
+    Args:
+        file_path: Path to the document file
+        kb_id: Knowledge base ID for namespace isolation
+        doc_id: Document ID to use in LightRAG
+        parser: Parser to use ('mineru', 'docling', 'paddleocr')
+        parse_method: Parse method ('auto', 'txt', 'ocr')
+    
+    Returns:
+        dict with keys:
+            - success: bool
+            - doc_id: str (the LightRAG document ID)
+            - content_blocks: int (number of content blocks parsed)
+            - error: str (if failed)
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"\n=== PROCESS_DOCUMENT_WITH_RAGANYTHING START ===")
+    logger.info(f"File: {file_path}")
+    logger.info(f"KB ID: {kb_id}")
+    logger.info(f"Doc ID: {doc_id}")
+    logger.info(f"Parser: {parser}")
+    
+    try:
+        from raganything import RAGAnything
+        from raganything.config import RAGAnythingConfig
+        
+        # Create namespaced working directory
+        namespace = f"kb_{kb_id}"
+        working_dir = f"./rag_storage/{namespace}"
+        
+        # Select parser based on file extension
+        from pathlib import Path
+        file_ext = Path(file_path).suffix.lower()
+        
+        if file_ext in ['.md', '.txt']:
+            # For simple text files, read content and pass to ainsert
+            from server.models.knowledge_base import KnowledgeBase
+            from sqlalchemy import select
+            
+            # Get KB to create proper RAG instance
+            result_db = await db.execute(
+                select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
+            )
+            kb = result_db.scalar_one_or_none()
+            
+            if not kb:
+                return {
+                    'success': False,
+                    'error': f'Knowledge base not found: {kb_id}',
+                }
+            
+            # Read file content
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            logger.info(f"Read MD/TXT file content: {len(content)} chars")
+            
+            # Get RAG instance from manager (properly configured with LLM and embedding)
+            rag_manager.initialize()
+            async with rag_manager.get_rag_instance(kb) as rag:
+                logger.info(f"Processing MD/TXT file with ainsert...")
+                logger.info(f"File path: {file_path}")
+                logger.info(f"Doc ID: {doc_id}")
+                
+                try:
+                    logger.warning(f"\n=== CALLING AINSERT ===")
+                    logger.warning(f"Input content length: {len(content)}")
+                    logger.warning(f"File paths: {str(doc_id)}")
+                    logger.warning(f"IDs: {str(doc_id)}")
+                    
+                    # Pass content string (not file path!) to ainsert
+                    track_id = await rag.lightrag.ainsert(
+                        input=content,  # Pass content string!
+                        file_paths=str(doc_id),
+                        ids=str(doc_id),
+                    )
+                    logger.warning(f"✅ ainsert() completed with track_id: {track_id}")
+                    
+                    # Check if document was actually processed
+                    doc_status = await rag.lightrag.doc_status.get_by_id(str(doc_id))
+                    if doc_status:
+                        logger.warning(f"Doc status: {doc_status.get('status')}")
+                        logger.warning(f"Chunks count: {doc_status.get('chunks_count')}")
+                    else:
+                        logger.warning(f"❌ Doc status not found!")
+                    
+                    return {
+                        'success': True,
+                        'doc_id': str(doc_id),
+                        'content_blocks': 1,
+                    }
+                except Exception as insert_error:
+                    logger.error(f"❌ Insertion failed: {insert_error}", exc_info=True)
+                    return {
+                        'success': False,
+                        'error': f'Failed to insert document: {insert_error}',
+                    }
+        elif file_ext == '.pdf':
+            # Use configured parser for PDF (default: mineru remote API)
+            selected_parser = parser
+        elif file_ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']:
+            # Use paddleocr for images (local OCR, no API needed)
+            selected_parser = 'paddleocr'
+        else:
+            # Default to configured parser
+            selected_parser = parser
+        
+        # Create config
+        config = RAGAnythingConfig(
+            parser=selected_parser,
+            parse_method=parse_method,
+            working_dir=working_dir,
+            parser_output_dir=f"{working_dir}/output",
+            enable_image_processing=True,
+            enable_table_processing=True,
+        )
+        
+        # Initialize LLM and embedding functions from environment variables
+        from raganything.config import get_llm_model_func, get_embedding_func
+        llm_func = get_llm_model_func()
+        embedding_func = get_embedding_func()
+        
+        if not llm_func:
+            logger.error("Failed to initialize LLM function from environment")
+            return {'success': False, 'error': 'LLM function not initialized'}
+        
+        if not embedding_func:
+            logger.error("Failed to initialize embedding function from environment")
+            return {'success': False, 'error': 'Embedding function not initialized'}
+        
+        logger.info(f"Initialized LLM: {llm_func}")
+        logger.info(f"Initialized Embedding: {embedding_func}")
+        
+        # Create RAGAnything instance with model functions
+        rag = RAGAnything(
+            config=config,
+            llm_model_func=llm_func,
+            embedding_func=embedding_func
+        )
+        
+        # Process document
+        result = await rag.process_document_complete(
+            file_path=file_path,
+            doc_id=str(doc_id),
+        )
+        
+        return {
+            'success': True,
+            'doc_id': result.get('doc_id', str(doc_id)),
+            'content_blocks': len(result.get('content_list', [])),
+        }
+        
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        return {
+            'success': False,
+            'error': str(e),
+            'error_detail': error_detail,
+        }
