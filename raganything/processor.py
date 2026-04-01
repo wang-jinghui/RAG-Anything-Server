@@ -393,8 +393,9 @@ class ProcessorMixin:
                     self.logger.warning(
                         f"{self.config.parser} parser doesn't support image parsing, falling back to MinerU"
                     )
+                    fallback_parser = get_parser("mineru")
                     content_list = await asyncio.to_thread(
-                        MineruParser().parse_image,
+                        fallback_parser.parse_image,
                         image_path=file_path,
                         output_dir=output_dir,
                         **kwargs,

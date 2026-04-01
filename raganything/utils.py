@@ -165,8 +165,13 @@ async def insert_text_content(
         file_paths: single string of the file path or list of file paths, used for citation
     """
     logger.info("Starting text content insertion into LightRAG...")
+    print(f"\n[DBUG] === INSERT_TEXT_CONTENT START ===")
+    print(f"[DBUG] Input length: {len(input) if isinstance(input, str) else 'list'}")
+    print(f"[DBUG] File paths: {file_paths}")
+    print(f"[DBUG] IDs: {ids}")
 
     # Use LightRAG's insert method with all parameters
+    print(f"[DBUG] Calling lightrag.ainsert()...")
     await lightrag.ainsert(
         input=input,
         file_paths=file_paths,
@@ -174,8 +179,10 @@ async def insert_text_content(
         split_by_character_only=split_by_character_only,
         ids=ids,
     )
+    print(f"[DBUG] ainsert() completed!")
 
     logger.info("Text content insertion complete")
+    print(f"[DBUG] === INSERT_TEXT_CONTENT END ===\n")
 
 
 async def insert_text_content_with_multimodal_content(

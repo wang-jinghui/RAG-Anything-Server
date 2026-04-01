@@ -2277,6 +2277,11 @@ def get_parser(parser_type: str) -> Parser:
     Checks built-in parsers first, then falls back to the custom parser
     registry populated via :func:`register_parser`.
 
+    For MinerU parser, automatically selects between local subprocess mode
+    and remote API mode based on MINERU_MODE environment variable:
+    - MINERU_MODE=remote: Uses RemoteMineruParser for lightweight HTTP-based parsing
+    - MINERU_MODE=local (or unset): Uses MineruParser with local subprocess calls
+
     Args:
         parser_type: Parser name (e.g., "mineru", "docling", "paddleocr",
                      or any custom registered name).
@@ -2287,9 +2292,22 @@ def get_parser(parser_type: str) -> Parser:
     Raises:
         ValueError: If the parser name is not recognized.
     """
+    import os
+    
     parser_name = (parser_type or "mineru").strip().lower()
+    
     if parser_name == "mineru":
-        return MineruParser()
+        # Check if remote mode is enabled
+        mineru_mode = os.getenv("MINERU_MODE", "local").strip().lower()
+        
+        if mineru_mode == "remote":
+            # Use remote API parser (lightweight, no local dependencies)
+            from raganything.remote_parser import RemoteMineruParser
+            return RemoteMineruParser()
+        else:
+            # Use local subprocess parser (default behavior)
+            return MineruParser()
+    
     if parser_name == "docling":
         return DoclingParser()
     if parser_name == "paddleocr":

@@ -5,8 +5,11 @@ Contains configuration dataclasses with environment variable support
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional, Callable
+import os
 from lightrag.utils import get_env_value
+from lightrag.llm.ollama import ollama_model_complete, ollama_embed
+from functools import partial
 
 
 @dataclass
@@ -150,3 +153,43 @@ class RAGAnythingConfig:
             stacklevel=2,
         )
         self.parse_method = value
+
+
+def get_llm_model_func() -> Optional[Callable]:
+    """Get LLM model function from environment variables"""
+    llm_binding = os.getenv("LLM_BINDING", "ollama")
+    llm_model = os.getenv("LLM_MODEL")
+    llm_host = os.getenv("LLM_BINDING_HOST", "http://localhost:11434")
+    
+    if not llm_model:
+        return None
+    
+    if llm_binding == "ollama":
+        return partial(ollama_model_complete, model=llm_model, api_base=llm_host)
+    else:
+        raise ValueError(f"Unsupported LLM binding: {llm_binding}")
+
+
+def get_embedding_func() -> Optional[Callable]:
+    """Get embedding function from environment variables"""
+    from lightrag.utils import EmbeddingFunc
+    
+    embedding_binding = os.getenv("EMBEDDING_BINDING", "ollama")
+    embedding_model = os.getenv("EMBEDDING_MODEL")
+    embedding_host = os.getenv("EMBEDDING_BINDING_HOST", "http://localhost:11434")
+    
+    if not embedding_model:
+        return None
+    
+    if embedding_binding == "ollama":
+        # Use .func to access the unwrapped function to avoid double wrapping
+        embed_func = partial(ollama_embed.func, model=embedding_model, api_base=embedding_host)
+        # Return EmbeddingFunc object, not just a function
+        return EmbeddingFunc(
+            embedding_dim=1024,  # qwen3-embedding outputs 1024 dimensions
+            func=embed_func,
+            max_token_size=8192,
+            model_name=embedding_model
+        )
+    else:
+        raise ValueError(f"Unsupported embedding binding: {embedding_binding}")

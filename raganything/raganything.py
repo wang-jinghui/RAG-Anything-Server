@@ -68,6 +68,17 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
     config: Optional[RAGAnythingConfig] = field(default=None)
     """Configuration object, if None will create with environment variables."""
 
+    # Multi-tenancy Support
+    # ---
+    tenant_id: Optional[str] = field(default=None)
+    """Optional tenant ID for multi-tenant isolation."""
+
+    kb_id: Optional[str] = field(default=None)
+    """Optional knowledge base ID for namespace isolation."""
+
+    namespace_prefix: Optional[str] = field(default=None, init=False)
+    """Computed namespace prefix for LightRAG storage."""
+
     # LightRAG Configuration
     # ---
     lightrag_kwargs: Dict[str, Any] = field(default_factory=dict)
@@ -108,8 +119,20 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
         if self.config is None:
             self.config = RAGAnythingConfig()
 
+        # Compute namespace prefix for multi-tenancy
+        if self.kb_id:
+            self.namespace_prefix = f"kb_{self.kb_id}"
+        elif self.tenant_id:
+            self.namespace_prefix = f"tenant_{self.tenant_id}"
+        else:
+            self.namespace_prefix = None
+
         # Set working directory
         self.working_dir = self.config.working_dir
+        
+        # Apply namespace to working directory if provided
+        if self.namespace_prefix:
+            self.working_dir = os.path.join(self.working_dir, self.namespace_prefix)
 
         # Set up logger (use existing logger, don't configure it)
         self.logger = logger
@@ -123,11 +146,14 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
         # Create working directory if needed
         if not os.path.exists(self.working_dir):
             os.makedirs(self.working_dir)
-            self.logger.info(f"Created working directory: {self.working_dir}")
+            self.logger.info(f"Created working directory with namespace: {self.working_dir}")
 
         # Log configuration info
         self.logger.info("RAGAnything initialized with config:")
         self.logger.info(f"  Working directory: {self.config.working_dir}")
+        if self.namespace_prefix:
+            self.logger.info(f"  Namespace prefix: {self.namespace_prefix}")
+            self.logger.info(f"  Namespaced working directory: {self.working_dir}")
         self.logger.info(f"  Parser: {self.config.parser}")
         self.logger.info(f"  Parse method: {self.config.parse_method}")
         self.logger.info(
@@ -576,8 +602,10 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
 
     def get_processor_info(self) -> Dict[str, Any]:
         """Get processor information"""
+        mineru_parser = get_parser("mineru")
         base_info = {
-            "mineru_installed": MineruParser.check_installation(MineruParser()),
+            "mineru_mode": os.getenv("MINERU_MODE", "local").strip().lower(),
+            "mineru_available": mineru_parser.check_installation(),
             "parser_installation": {
                 parser_name: get_parser(parser_name).check_installation()
                 for parser_name in SUPPORTED_PARSERS
