@@ -388,6 +388,28 @@ class BaseModalProcessor:
         self.llm_model_func = lightrag.llm_model_func
         self.global_config = asdict(lightrag)
         self.hashing_kv = lightrag.llm_response_cache
+        
+        # Fallback if llm_response_cache is not initialized
+        if self.hashing_kv is None:
+            from lightrag.kg.json_kv_impl import JsonKVStorage
+            self.logger.warning("llm_response_cache is None, creating fallback")
+            self.hashing_kv = JsonKVStorage(
+                namespace="llm_response_cache",
+                workspace=lightrag.workspace,
+                global_config=self.global_config,
+            )
+            # Initialize synchronously to avoid race conditions
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is running, schedule initialization
+                asyncio.create_task(self.hashing_kv.initialize())
+                self.logger.info("Scheduled fallback llm_response_cache initialization")
+            else:
+                # If no running loop, initialize directly
+                loop.run_until_complete(self.hashing_kv.initialize())
+                self.logger.info("Created fallback llm_response_cache")
+        
         self.tokenizer = lightrag.tokenizer
 
         # Initialize context extractor with tokenizer if not provided
