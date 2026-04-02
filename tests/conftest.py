@@ -5,6 +5,9 @@ import os
 import pytest
 from dotenv import load_dotenv
 
+# Set environment variable to disable problematic middleware in tests
+os.environ["PYTEST_CURRENT_TEST"] = "1"
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -73,10 +76,11 @@ async def client(db_session: AsyncSession):
     
     app.dependency_overrides[get_db_session] = override_get_db_session
     
-    with TestClient(app) as test_client:
-        yield test_client
-    
-    app.dependency_overrides.clear()
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture
