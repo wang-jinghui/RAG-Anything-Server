@@ -93,3 +93,7 @@ nul
 !requirements.txt
 *.log
 *.json
+test*.py
+check*.py
+debug*.py
+tests/
