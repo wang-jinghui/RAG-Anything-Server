@@ -1640,6 +1640,13 @@ class ProcessorMixin:
                 doc_id=doc_id,
                 duration_seconds=duration,
             )
+        
+        # Return result dictionary
+        return {
+            'doc_id': doc_id,
+            'file_path': str(file_path),
+            'success': True,
+        }
 
     async def process_document_complete_lightrag_api(
         self,
