@@ -76,6 +76,9 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
     kb_id: Optional[str] = field(default=None)
     """Optional knowledge base ID for namespace isolation."""
 
+    workspace: Optional[str] = field(default=None)
+    """Explicit workspace override for LightRAG data isolation."""
+
     namespace_prefix: Optional[str] = field(default=None, init=False)
     """Computed namespace prefix for LightRAG storage."""
 
@@ -371,7 +374,46 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
                 "working_dir": self.working_dir,
                 "llm_model_func": self.llm_model_func,
                 "embedding_func": self.embedding_func,
+                # Add model names for LightRAG to use
+                "llm_model_name": os.getenv("LLM_MODEL", "qwen3:1.7b"),
+                # Add storage configurations from environment variables
+                "kv_storage": os.getenv("LIGHTRAG_KV_STORAGE", "JsonKVStorage"),
+                "vector_storage": os.getenv("LIGHTRAG_VECTOR_STORAGE", "NanoVectorDBStorage"),
+                "graph_storage": os.getenv("LIGHTRAG_GRAPH_STORAGE", "NetworkXStorage"),
+                "doc_status_storage": os.getenv("LIGHTRAG_DOC_STATUS_STORAGE", "JsonDocStatusStorage"),
             }
+            
+            # Add explicit workspace override if provided
+            if self.workspace:
+                lightrag_params["workspace"] = self.workspace
+                self.logger.info(f"Using explicit workspace: {self.workspace}")
+                
+                # Set environment variable before LightRAG initialization
+                # This ensures PGVectorStorage and other storages use the correct workspace
+                old_workspace = os.environ.get("WORKSPACE")
+                old_pg_workspace = os.environ.get("POSTGRES_WORKSPACE")
+                
+                # Set both WORKSPACE and POSTGRES_WORKSPACE for compatibility
+                os.environ["WORKSPACE"] = self.workspace
+                os.environ["POSTGRES_WORKSPACE"] = self.workspace
+                self.logger.info(f"Set WORKSPACE={self.workspace}, POSTGRES_WORKSPACE={self.workspace}")
+                
+                # Add workspace to vector_db_storage_cls_kwargs for PostgreSQLDB
+                if "vector_db_storage_cls_kwargs" not in lightrag_params:
+                    lightrag_params["vector_db_storage_cls_kwargs"] = {}
+                lightrag_params["vector_db_storage_cls_kwargs"]["workspace"] = self.workspace
+                self.logger.info(f"Added workspace to vector_db_storage_cls_kwargs: {self.workspace}")
+            
+            # Debug: Log embedding function details
+            self.logger.info(f"\n=== EMBEDDING FUNC DEBUG ===")
+            self.logger.info(f"embedding_func type: {type(self.embedding_func)}")
+            if hasattr(self.embedding_func, 'embedding_dim'):
+                self.logger.info(f"embedding_dim: {self.embedding_func.embedding_dim}")
+            if hasattr(self.embedding_func, 'model_name'):
+                self.logger.info(f"model_name: {self.embedding_func.model_name}")
+            if hasattr(self.embedding_func, 'func'):
+                self.logger.info(f"func: {self.embedding_func.func}")
+            self.logger.info(f"============================\n")
 
             # Merge user-provided lightrag_kwargs, which can override defaults
             lightrag_params.update(self.lightrag_kwargs)
@@ -389,16 +431,45 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
                 # Create LightRAG instance with merged parameters
                 self.lightrag = LightRAG(**lightrag_params)
                 await self.lightrag.initialize_storages()
+                
+                # Restore original workspace environment variable after initialization
+                if self.workspace:
+                    if old_workspace is not None:
+                        os.environ["WORKSPACE"] = old_workspace
+                    else:
+                        os.environ.pop("WORKSPACE", None)
+                    
+                    if old_pg_workspace is not None:
+                        os.environ["POSTGRES_WORKSPACE"] = old_pg_workspace
+                    else:
+                        os.environ.pop("POSTGRES_WORKSPACE", None)
+                    
+                    self.logger.info(f"Restored WORKSPACE and POSTGRES_WORKSPACE environment variables")
+                
                 await initialize_pipeline_status()
 
                 # Initialize parse cache storage using LightRAG's KV storage
-                self.parse_cache = self.lightrag.key_string_value_json_storage_cls(
-                    namespace="parse_cache",
-                    workspace=self.lightrag.workspace,
-                    global_config=self.lightrag.__dict__,
-                    embedding_func=self.embedding_func,
-                )
-                await self.parse_cache.initialize()
+                self.logger.info("Initializing parse cache...")
+                try:
+                    self.parse_cache = self.lightrag.key_string_value_json_storage_cls(
+                        namespace="parse_cache",
+                        workspace=self.lightrag.workspace,
+                        global_config=self.lightrag.__dict__,
+                        embedding_func=self.embedding_func,
+                    )
+                    await self.parse_cache.initialize()
+                    self.logger.info("Parse cache initialized successfully")
+                except Exception as e:
+                    self.logger.warning(f"Failed to initialize parse_cache: {e}")
+                    # Create a simple in-memory fallback
+                    from lightrag.kg.json_kv_impl import JsonKVStorage
+                    self.parse_cache = JsonKVStorage(
+                        namespace="parse_cache",
+                        workspace=self.lightrag.workspace,
+                        global_config=self.lightrag.__dict__,
+                    )
+                    await self.parse_cache.initialize()
+                    self.logger.info("Created fallback parse_cache")
 
                 # Initialize processors after LightRAG is ready
                 self._initialize_processors()
