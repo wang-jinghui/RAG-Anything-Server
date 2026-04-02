@@ -27,6 +27,7 @@ async def _process_document_background(
     doc_id: UUID,
     kb_id: UUID,
     file_path: str,
+    owner_id: UUID,  # Add owner_id for permission check
     db: AsyncSession
 ):
     """
@@ -48,6 +49,29 @@ async def _process_document_background(
     print(f"[DBUG] File: {file_path}")
     
     try:
+        # Check if knowledge base still exists and verify ownership
+        kb = await db.get(KnowledgeBase, kb_id)
+        if not kb:
+            logger.warning(f"Knowledge base {kb_id} not found, skipping processing for document {doc_id}")
+            print(f"[DBUG] KB not found, skipping processing")
+            doc = await db.get(KBDocument, doc_id)
+            if doc:
+                doc.upload_status = "failed"
+                doc.error_message = f"Knowledge base {kb_id} not found"
+                await db.commit()
+            return
+        
+        # Verify ownership to prevent processing without permission
+        if str(kb.owner_id) != owner_id:
+            logger.warning(f"Permission denied: user {owner_id} doesn't own KB {kb_id}")
+            print(f"[DBUG] Permission denied - KB owner mismatch")
+            doc = await db.get(KBDocument, doc_id)
+            if doc:
+                doc.upload_status = "failed"
+                doc.error_message = f"Permission denied: KB {kb_id} belongs to user {kb.owner_id}"
+                await db.commit()
+            return
+        
         logger.info(f"Starting background processing for document {doc_id}")
         print(f"[DBUG] Calling process_document_with_raganything...")
         
@@ -180,38 +204,59 @@ async def upload_document(
         await db.commit()
         await db.refresh(doc)
         
-        # Process document SYNCHRONOUSLY (not in background)
-        # This ensures the document is actually processed before returning
-        logger.info(f"\n[SYNC] Starting synchronous processing...")
-        logger.info(f"[SYNC] Doc ID: {doc.id}")
-        logger.info(f"[SYNC] File: {temp_file_path}")
+        # Process document in background with its OWN db session
+        # The request's db session is closed after the response returns
+        logger.info(f"\n[ASYNC] Starting background processing for doc {doc.id}")
         
-        try:
-            from server.services.rag_service import process_document_with_raganything
-            result = await process_document_with_raganything(
-                doc_id=doc.id,
-                kb_id=kb_id,
-                file_path=temp_file_path,
-                db=db
-            )
-            
-            logger.info(f"[SYNC] Processing result: {result}")
-            
-            if result['success']:
-                doc.upload_status = "completed"
-                doc.lightrag_doc_id = result['doc_id']
-                doc.processed_at = datetime.utcnow()
-                logger.info(f"[SYNC] ✅ Document processed successfully")
-            else:
-                doc.upload_status = "failed"
-                doc.error_message = result.get('error', 'Unknown error')
-                logger.info(f"[SYNC] ❌ Processing failed: {result.get('error')}")
-        except Exception as e:
-            logger.error(f"[SYNC] ❌ Exception during processing: {e}", exc_info=True)
-            doc.upload_status = "failed"
-            doc.error_message = str(e)
+        from server.services.rag_service import process_document_with_raganything
+        from server.models.database import async_session_maker
         
-        await db.commit()
+        _doc_id = doc.id
+        _kb_id = kb_id
+        _file_path = temp_file_path
+        _owner_id = current_user.id  # Capture owner_id for background task
+        
+        async def _run_background():
+            async with async_session_maker() as bg_db:
+                try:
+                    logger.info(f"[ASYNC] Starting background processing...")
+                    result = await process_document_with_raganything(
+                        doc_id=_doc_id,
+                        kb_id=_kb_id,
+                        file_path=_file_path,
+                        owner_id=_owner_id,  # Pass owner_id for permission check
+                        db=bg_db,
+                    )
+                    logger.info(f"[ASYNC] Processing result type: {type(result)}")
+                    logger.info(f"[ASYNC] Processing result: {result}")
+                    
+                    if result is None:
+                        logger.error("[ASYNC] ERROR: process_document_with_raganything returned None!")
+                        raise ValueError("process_document_with_raganything returned None")
+                    
+                    bg_doc = await bg_db.get(KBDocument, _doc_id)
+                    if bg_doc:
+                        if result['success']:
+                            bg_doc.upload_status = "completed"
+                            bg_doc.lightrag_doc_id = result['doc_id']
+                            bg_doc.processed_at = datetime.utcnow()
+                        else:
+                            bg_doc.upload_status = "failed"
+                            bg_doc.error_message = result.get('error', 'Unknown error')
+                        await bg_db.commit()
+                except Exception as e:
+                    logger.error(f"[ASYNC] Background task error: {e}", exc_info=True)
+                    try:
+                        bg_doc = await bg_db.get(KBDocument, _doc_id)
+                        if bg_doc:
+                            bg_doc.upload_status = "failed"
+                            bg_doc.error_message = str(e)
+                            await bg_db.commit()
+                    except Exception:
+                        pass
+        
+        import asyncio
+        asyncio.create_task(_run_background())
         
         return DocumentUploadResponse(
             id=doc.id,
