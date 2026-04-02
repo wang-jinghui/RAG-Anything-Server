@@ -41,7 +41,8 @@ class RAGInstanceManager:
         self,
         kb: KnowledgeBase,
         llm_model_func: Optional[Any] = None,
-        embedding_func: Optional[Any] = None
+        embedding_func: Optional[Any] = None,
+        parser_override: Optional[str] = None  # Added parser override parameter
     ):
         """
         Get or create a RAGAnything instance for a specific knowledge base.
@@ -59,7 +60,7 @@ class RAGInstanceManager:
             Configured RAGAnything instance
         """
         kb_id_str = str(kb.id)
-        namespace = kb.lightrag_namespace_prefix
+        namespace = f"kb_{kb_id_str}"  # Use kb_id directly for consistency with upload
         
         # Create lock for this KB if not exists
         if kb_id_str not in self._locks:
@@ -72,7 +73,8 @@ class RAGInstanceManager:
                 rag = await self._create_rag_instance(
                     namespace=namespace,
                     llm_model_func=llm_model_func,
-                    embedding_func=embedding_func
+                    embedding_func=embedding_func,
+                    parser_override=parser_override  # Pass parser override
                 )
                 self._instances[kb_id_str] = rag
             
@@ -88,7 +90,8 @@ class RAGInstanceManager:
         self,
         namespace: str,
         llm_model_func: Optional[Any] = None,
-        embedding_func: Optional[Any] = None
+        embedding_func: Optional[Any] = None,
+        parser_override: Optional[str] = None  # Added parser override parameter
     ) -> Any:
         """
         Create a new RAGAnything instance with namespace isolation.
@@ -115,6 +118,37 @@ class RAGInstanceManager:
         # Modify working_dir to include namespace for isolation
         namespaced_working_dir = f"{config.working_dir}/{namespace}"
         
+        # Force workspace to use kb_id for proper data isolation
+        # CRITICAL: Must use consistent namespace for upload and query
+        # Upload uses: "kb_{kb_id}"
+        # Query should also use: "kb_{kb_id}" for consistency
+        # 
+        # If namespace comes from kb.lightrag_namespace_prefix (kb_{user_id}_{random}),
+        # we need to convert it back to kb_id format
+        import os
+        
+        # Check if this is a kb_id-based namespace (format: kb_{uuid})
+        # If not, assume it's the legacy format and keep as-is
+        parts = namespace.split('_')
+        if len(parts) >= 2 and parts[0] == 'kb':
+            # Try to extract UUID
+            potential_uuid = '_'.join(parts[1:])
+            # Validate if it looks like a UUID
+            try:
+                from uuid import UUID
+                UUID(potential_uuid)
+                # Valid UUID, use as workspace
+                forced_workspace = potential_uuid
+            except ValueError:
+                # Not a valid UUID, just remove 'kb_' prefix
+                forced_workspace = namespace[3:]
+        else:
+            forced_workspace = namespace
+        
+        # Set environment variable to force correct workspace
+        old_workspace = os.environ.get("LIGHTRAG_WORKSPACE")
+        os.environ["LIGHTRAG_WORKSPACE"] = forced_workspace
+        
         # Create config with namespace
         rag_config = RAGConfig(
             llm=config.llm,
@@ -127,10 +161,26 @@ class RAGInstanceManager:
         
         # Create RAGAnything config with namespace
         from raganything.config import RAGAnythingConfig as RAGAnythingConfigObj
+        
+        # Choose parser based on file type (TXT/MD files don't need MinerU)
+        import os
+        file_ext = os.path.splitext(namespace)[1].lower() if '.' in namespace else ''
+        
+        # Use parser override if provided, otherwise auto-select based on file type
+        if parser_override:
+            selected_parser = parser_override
+            parse_method = 'auto'
+        elif file_ext in ['.txt', '.md', '.markdown']:
+            selected_parser = 'docling'  # Use docling for simple text files
+            parse_method = 'auto'
+        else:
+            selected_parser = 'mineru'  # Use MinerU for PDFs and complex formats
+            parse_method = 'auto'
+        
         raganything_config = RAGAnythingConfigObj(
             working_dir=namespaced_working_dir,
-            parser='mineru',
-            parse_method='auto',
+            parser=selected_parser,
+            parse_method=parse_method,
         )
         
         # Create RAGAnything instance - ONLY pass config and function refs
@@ -139,10 +189,17 @@ class RAGInstanceManager:
             config=raganything_config,
             llm_model_func=llm_model_func or self._default_llm_func(config),
             embedding_func=embedding_func or self._default_embedding_func(config),
+            workspace=forced_workspace,  # Force correct workspace for data isolation
         )
         
         # Initialize LightRAG
         await rag._ensure_lightrag_initialized()
+        
+        # Restore original workspace environment variable
+        if old_workspace is not None:
+            os.environ["LIGHTRAG_WORKSPACE"] = old_workspace
+        else:
+            os.environ.pop("LIGHTRAG_WORKSPACE", None)
         
         return rag
     
@@ -194,7 +251,17 @@ class RAGInstanceManager:
                     responses.append(response['message']['content'])
                 return responses
             
-            return llm_func_async
+            # Wrapper to handle both single prompt (str) and batch prompts (list[str])
+            async def wrapped_llm_func(prompt: str | list[str], **kwargs) -> str | list[str]:
+                if isinstance(prompt, str):
+                    # Single prompt: convert to list and return first result
+                    results = await llm_func_async([prompt], **kwargs)
+                    return results[0]
+                else:
+                    # Batch prompts: return all results
+                    return await llm_func_async(prompt, **kwargs)
+            
+            return wrapped_llm_func
         
         else:
             # Default: assume OpenAI-compatible API
@@ -216,7 +283,17 @@ class RAGInstanceManager:
                     responses.append(response.choices[0].message.content)
                 return responses
             
-            return llm_func
+            # Wrapper to handle both single prompt (str) and batch prompts (list[str])
+            async def wrapped_llm_func(prompt: str | list[str], **kwargs) -> str | list[str]:
+                if isinstance(prompt, str):
+                    # Single prompt: convert to list and return first result
+                    results = await llm_func([prompt], **kwargs)
+                    return results[0]
+                else:
+                    # Batch prompts: return all results
+                    return await llm_func(prompt, **kwargs)
+            
+            return wrapped_llm_func
     
     def _default_embedding_func(self, config: RAGConfig) -> Any:
         """Create default embedding function based on config."""
@@ -246,6 +323,7 @@ class RAGInstanceManager:
                 embedding_dim=config.embedding.embedding_dim,
                 max_token_size=8192,  # Default value, not in EmbeddingConfig
                 func=embed_func,
+                model_name=config.embedding.model,  # Add model_name for table suffix
             )
         
         elif config.embedding.provider == "ollama":
@@ -282,6 +360,7 @@ class RAGInstanceManager:
                 embedding_dim=config.embedding.embedding_dim,
                 max_token_size=8192,  # Default value
                 func=embed_func_async,
+                model_name=config.embedding.model,  # Add model_name for table suffix
             )
         
         else:
@@ -339,7 +418,8 @@ async def process_document_with_raganything(
     kb_id: UUID,
     doc_id: UUID,
     db: AsyncSession,  # Added db parameter
-    parser: str = "docling",
+    owner_id: Optional[UUID] = None,  # Added owner_id for permission check
+    parser: Optional[str] = None,  # Auto-detect based on file type if None
     parse_method: str = "auto",
 ) -> dict:
     """
@@ -379,12 +459,15 @@ async def process_document_with_raganything(
         namespace = f"kb_{kb_id}"
         working_dir = f"./rag_storage/{namespace}"
         
-        # Select parser based on file extension
+        # Select parser based on file extension - ALL use MinerU
         from pathlib import Path
         file_ext = Path(file_path).suffix.lower()
         
+        # Always use mineru for all file types
+        selected_parser = 'mineru'
+        
         if file_ext in ['.md', '.txt']:
-            # For simple text files, read content and pass to ainsert
+            # For simple text files, read content and pass to ainsert (use docling)
             from server.models.knowledge_base import KnowledgeBase
             from sqlalchemy import select
             
@@ -406,9 +489,32 @@ async def process_document_with_raganything(
             
             logger.info(f"Read MD/TXT file content: {len(content)} chars")
             
-            # Get RAG instance from manager (properly configured with LLM and embedding)
+            # Get RAG instance from manager (use docling for text files)
             rag_manager.initialize()
-            async with rag_manager.get_rag_instance(kb) as rag:
+            
+            # Get LLM and embedding functions from config
+            from raganything.config import get_llm_model_func, get_embedding_func
+            llm_func = get_llm_model_func()
+            embedding_func = get_embedding_func()
+            
+            if not llm_func or not embedding_func:
+                logger.error("Failed to initialize LLM/Embedding functions")
+                return {
+                    'success': False,
+                    'error': 'LLM/Embedding functions not initialized',
+                }
+            
+            # CRITICAL: Use consistent namespace for upload and query
+            # Must use "kb_{kb_id}" format, not kb.lightrag_namespace_prefix
+            namespace = f"kb_{kb_id}"
+            
+            async with rag_manager.get_rag_instance(
+                kb, 
+                namespace=namespace,  # Force correct namespace
+                parser_override='mineru',  # Use MinerU for all files
+                llm_model_func=llm_func,
+                embedding_func=embedding_func
+            ) as rag:
                 logger.info(f"Processing MD/TXT file with ainsert...")
                 logger.info(f"File path: {file_path}")
                 logger.info(f"Doc ID: {doc_id}")
@@ -447,14 +553,14 @@ async def process_document_with_raganything(
                         'error': f'Failed to insert document: {insert_error}',
                     }
         elif file_ext == '.pdf':
-            # Use configured parser for PDF (default: mineru remote API)
-            selected_parser = parser
+            # Use mineru for PDF (default: mineru remote API)
+            selected_parser = 'mineru'
         elif file_ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']:
             # Use paddleocr for images (local OCR, no API needed)
             selected_parser = 'paddleocr'
         else:
-            # Default to configured parser
-            selected_parser = parser
+            # Default to mineru for other formats
+            selected_parser = 'mineru'
         
         # Create config
         config = RAGAnythingConfig(
@@ -490,15 +596,33 @@ async def process_document_with_raganything(
         )
         
         # Process document
+        logger.info(f"Calling process_document_complete for doc {doc_id}")
         result = await rag.process_document_complete(
             file_path=file_path,
             doc_id=str(doc_id),
         )
+        logger.info(f"process_document_complete returned: {type(result)} - {result}")
         
+        # Handle case where result might be None or not a dict
+        if result is None:
+            logger.error("process_document_complete returned None")
+            return {
+                'success': False,
+                'error': 'Document processing returned None',
+            }
+        
+        if not isinstance(result, dict):
+            logger.error(f"process_document_complete returned unexpected type: {type(result)}")
+            return {
+                'success': False,
+                'error': f'Unexpected result type: {type(result)}',
+            }
+        
+        logger.info(f"Result content: doc_id={result.get('doc_id')}, file_path={result.get('file_path')}, success={result.get('success')}")
         return {
-            'success': True,
+            'success': result.get('success', True),
             'doc_id': result.get('doc_id', str(doc_id)),
-            'content_blocks': len(result.get('content_list', [])),
+            'file_path': result.get('file_path'),
         }
         
     except Exception as e:
