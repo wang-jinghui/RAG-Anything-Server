@@ -1804,27 +1804,13 @@ class DoclingParser(Parser):
             bool: True if installation is valid, False otherwise
         """
         try:
-            # Prepare subprocess parameters to hide console window on Windows
-            import platform
-
-            subprocess_kwargs = {
-                "capture_output": True,
-                "text": True,
-                "check": True,
-                "encoding": "utf-8",
-                "errors": "ignore",
-            }
-
-            # Hide console window on Windows
-            if platform.system() == "Windows":
-                subprocess_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-
-            result = subprocess.run(["docling", "--version"], **subprocess_kwargs)
-            self.logger.debug(f"Docling version: {result.stdout.strip()}")
+            # Try to import docling package instead of running CLI command
+            from docling.document_converter import DocumentConverter
+            self.logger.debug("Docling Python package is available")
             return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except ImportError as e:
             self.logger.debug(
-                "Docling is not properly installed. "
+                f"Docling is not properly installed. Error: {e}. "
                 "Please ensure it is installed correctly."
             )
             return False
