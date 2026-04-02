@@ -51,7 +51,20 @@ async def query_knowledge_base(
         logger.info(f"Query mode: {query_data.mode.value}, top_k: {query_data.top_k}")
         
         # Get RAG instance for this KB
+        # CRITICAL: get_rag_instance already uses kb_id for namespace (see rag_service.py line 63)
+        # Upload uses "kb_{kb_id}", query also uses "kb_{kb_id}" - CONSISTENT!
+        
+        logger.info(f"=== QUERY DEBUG INFO ===")
+        logger.info(f"KB ID: {kb_id}")
+        expected_namespace = f"kb_{kb_id}"
+        logger.info(f"Expected namespace: {expected_namespace}")
+        
         async with rag_manager.get_rag_instance(kb) as rag:
+            logger.info(f"RAG working_dir: {rag.working_dir}")
+            if hasattr(rag, 'lightrag') and rag.lightrag:
+                logger.info(f"LightRAG workspace: {rag.lightrag.workspace}")
+            else:
+                logger.error("LightRAG not initialized!")
             logger.debug("RAG instance obtained")
             
             # Log LightRAG initialization status
