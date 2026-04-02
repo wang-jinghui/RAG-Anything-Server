@@ -161,11 +161,22 @@ def get_llm_model_func() -> Optional[Callable]:
     llm_model = os.getenv("LLM_MODEL")
     llm_host = os.getenv("LLM_BINDING_HOST", "http://localhost:11434")
     
+    # Get timeout from environment variable, default to 180 seconds
+    llm_timeout = int(os.getenv("LLM_TIMEOUT", "180"))
+    
     if not llm_model:
         return None
     
     if llm_binding == "ollama":
-        return partial(ollama_model_complete, model=llm_model, api_base=llm_host)
+        # Fix: Don't pass model= here, let LightRAG get it from global_config
+        # Only bind host and timeout
+        print(f"\n=== CREATING LLM FUNC ===")
+        print(f"Model will be read from global_config (should be {llm_model})")
+        print(f"Host: {llm_host}")
+        print(f"Timeout: {llm_timeout}")
+        print(f"==========================\n")
+        
+        return partial(ollama_model_complete, host=llm_host, timeout=llm_timeout)
     else:
         raise ValueError(f"Unsupported LLM binding: {llm_binding}")
 
@@ -178,12 +189,22 @@ def get_embedding_func() -> Optional[Callable]:
     embedding_model = os.getenv("EMBEDDING_MODEL")
     embedding_host = os.getenv("EMBEDDING_BINDING_HOST", "http://localhost:11434")
     
+    # Get timeout from environment variable, default to 60 seconds
+    embedding_timeout = int(os.getenv("EMBEDDING_TIMEOUT", "60"))
+    
     if not embedding_model:
         return None
     
     if embedding_binding == "ollama":
         # Use .func to access the unwrapped function to avoid double wrapping
-        embed_func = partial(ollama_embed.func, model=embedding_model, api_base=embedding_host)
+        print(f"\n=== CREATING EMBEDDING FUNC ===")
+        print(f"Model: {embedding_model}")
+        print(f"Host: {embedding_host}")
+        print(f"Timeout: {embedding_timeout}")
+        print(f"================================\n")
+        
+        # Fix: Use embed_model instead of model to match ollama_embed signature
+        embed_func = partial(ollama_embed.func, embed_model=embedding_model, host=embedding_host, timeout=embedding_timeout)
         # Return EmbeddingFunc object, not just a function
         return EmbeddingFunc(
             embedding_dim=1024,  # qwen3-embedding outputs 1024 dimensions
