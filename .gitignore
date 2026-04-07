@@ -97,3 +97,6 @@ test*.py
 check*.py
 debug*.py
 tests/
+
+test_mineru_output/
+*.docx
