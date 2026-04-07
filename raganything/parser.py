@@ -2290,6 +2290,12 @@ def get_parser(parser_type: str) -> Parser:
             # Use remote API parser (lightweight, no local dependencies)
             from raganything.remote_parser import RemoteMineruParser
             return RemoteMineruParser()
+        elif mineru_mode == "local_api":
+            # Use local HTTP API parser (requires running MinerU API service)
+            from raganything.local_api_parser import LocalMineruAPIParser
+            api_url = os.getenv("MINERU_LOCAL_API_URL")
+            output_dir = os.getenv("MINERU_OUTPUT_DIR")
+            return LocalMineruAPIParser(api_url=api_url, output_base_dir=output_dir)
         else:
             # Use local subprocess parser (default behavior)
             return MineruParser()
