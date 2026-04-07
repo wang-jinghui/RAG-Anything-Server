@@ -189,10 +189,29 @@ class LocalMineruAPIParser(Parser):
         images_dir = output_dir / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
         
-        # Step 1: Save ALL images from images_data (even if not referenced in content_list)
+        # Step 1: Collect all image filenames referenced in content_list
+        referenced_images = set()
+        for item in content_list:
+            if isinstance(item, dict):
+                for field_name in ["img_path", "table_img_path", "equation_img_path"]:
+                    if field_name in item and item[field_name]:
+                        img_filename = Path(item[field_name]).name
+                        referenced_images.add(img_filename)
+        
+        self.logger.info(f"Found {len(referenced_images)} referenced images in content_list")
+        
+        # Step 2: Save ONLY referenced images from images_data
         if images_data and isinstance(images_data, dict):
-            self.logger.info(f"Saving {len(images_data)} images from images_data field")
+            saved_count = 0
+            skipped_count = 0
+            
             for img_filename, base64_data in images_data.items():
+                # Only save if this image is referenced in content_list
+                if img_filename not in referenced_images:
+                    self.logger.debug(f"Skipping unreferenced image: {img_filename}")
+                    skipped_count += 1
+                    continue
+                
                 try:
                     # Extract actual base64 data (remove data:image/xxx;base64, prefix)
                     if ',' in base64_data:
@@ -206,12 +225,15 @@ class LocalMineruAPIParser(Parser):
                     with open(image_path, 'wb') as f:
                         f.write(image_bytes)
                     
-                    self.logger.debug(f"Saved image: {image_path.name} ({len(image_bytes)} bytes)")
+                    saved_count += 1
+                    self.logger.debug(f"Saved referenced image: {img_filename} ({len(image_bytes)} bytes)")
                     
                 except Exception as e:
                     self.logger.error(f"Failed to save image {img_filename}: {e}")
+            
+            self.logger.info(f"Saved {saved_count} images, skipped {skipped_count} unreferenced images")
         
-        # Step 2: Convert relative paths in content_list to absolute paths
+        # Step 3: Convert relative paths in content_list to absolute paths
         resolved_content_list = []
         for item in content_list:
             if isinstance(item, dict):
