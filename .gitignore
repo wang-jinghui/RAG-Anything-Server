@@ -99,4 +99,5 @@ debug*.py
 tests/
 
 test_mineru_output/
+test_final_output/
 *.docx
