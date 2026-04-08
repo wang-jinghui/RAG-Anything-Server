@@ -157,7 +157,8 @@ class QueryDemo:
         query_data = {
             "query": query_text,
             "mode": "naive",
-            "top_k": 5
+            "top_k": 5,
+            "vlm_enhanced": False  # Disable VLM to avoid timeout
         }
         
         start_time = time.time()
@@ -212,7 +213,8 @@ class QueryDemo:
         query_data = {
             "query": query_text,
             "mode": "hybrid",
-            "top_k": 5
+            "top_k": 5,
+            "vlm_enhanced": False  # Disable VLM to avoid timeout
         }
         
         start_time = time.time()
@@ -266,7 +268,8 @@ class QueryDemo:
         query_data = {
             "query": query_text,
             "mode": "mix",
-            "top_k": 5
+            "top_k": 5,
+            "vlm_enhanced": False  # Disable VLM to avoid timeout
         }
         
         start_time = time.time()
