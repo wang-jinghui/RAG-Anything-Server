@@ -3,9 +3,10 @@
 
 用途:
 - 删除演示过程中创建的测试用户
-- 删除测试知识库
-- 清理向量数据库
-- 重置 workspace
+- 删除测试知识库（通过 API）
+- 清理 rag_storage 目录中的知识库文件
+- 清理 temp_uploads 目录中的临时文件
+- 清理向量数据库和图数据库中的数据
 
 注意：此脚本会永久删除数据，请谨慎使用！
 
@@ -71,6 +72,55 @@ async def cleanup_knowledge_bases(client: APIClient, logger: DemoLogger):
         
     except Exception as e:
         logger.error(f"获取知识库列表失败：{str(e)}")
+
+
+async def cleanup_file_system(logger: DemoLogger):
+    """清理文件系统中的临时文件和缓存"""
+    print_section("清理文件系统", "=")
+    
+    import shutil
+    from pathlib import Path
+    
+    base_dir = Path(__file__).parent.parent
+    
+    # 清理 rag_storage 中的知识库目录
+    rag_storage_dir = base_dir / "rag_storage"
+    if rag_storage_dir.exists():
+        kb_dirs = list(rag_storage_dir.glob("kb_*"))
+        if kb_dirs:
+            logger.info(f"找到 {len(kb_dirs)} 个知识库目录")
+            for kb_dir in kb_dirs:
+                try:
+                    shutil.rmtree(kb_dir)
+                    logger.success(f"✓ 已删除：{kb_dir.name}")
+                except Exception as e:
+                    logger.error(f"删除失败 {kb_dir.name}: {str(e)}")
+        else:
+            logger.info("rag_storage 中没有知识库目录")
+    else:
+        logger.info("rag_storage 目录不存在")
+    
+    # 清理 temp_uploads 目录
+    temp_uploads_dir = base_dir / "temp_uploads"
+    if temp_uploads_dir.exists():
+        temp_files = list(temp_uploads_dir.iterdir())
+        if temp_files:
+            logger.info(f"找到 {len(temp_files)} 个临时文件/目录")
+            for temp_item in temp_files:
+                try:
+                    if temp_item.is_dir():
+                        shutil.rmtree(temp_item)
+                    else:
+                        temp_item.unlink()
+                    logger.success(f"✓ 已删除：{temp_item.name}")
+                except Exception as e:
+                    logger.error(f"删除失败 {temp_item.name}: {str(e)}")
+        else:
+            logger.info("temp_uploads 目录为空")
+    else:
+        logger.info("temp_uploads 目录不存在")
+    
+    logger.success("文件系统清理完成")
 
 
 async def main():
@@ -141,12 +191,18 @@ async def main():
         
         await cleanup_knowledge_bases(client, logger)
         
-        # ========== 步骤 3: 验证清理结果 ==========
-        print_section("步骤 3: 验证清理结果", "=")
+        # ========== 步骤 3: 清理文件系统 ==========
+        print_section("步骤 3: 清理文件系统", "=")
+        
+        await cleanup_file_system(logger)
+        
+        # ========== 步骤 4: 验证清理结果 ==========
+        print_section("步骤 4: 验证清理结果", "=")
         
         try:
             kbs_response = await client.get(f"{API_PREFIX}/knowledge-bases")
-            remaining_kbs = kbs_response.get("items", [])
+            # APIClient 返回的是 list，不是 dict
+            remaining_kbs = kbs_response if isinstance(kbs_response, list) else kbs_response.get("items", [])
             
             if remaining_kbs:
                 logger.warning(f"仍有 {len(remaining_kbs)} 个知识库未被清理")
@@ -158,12 +214,14 @@ async def main():
         except Exception as e:
             logger.error(f"验证失败：{str(e)}")
         
-        # ========== 步骤 4: 总结 ==========
+        # ========== 步骤 5: 总结 ==========
         print_section("清理完成", "=")
         
         logger.success("演示数据清理完成！")
         print("\n已清理:")
-        print("  ✓ 知识库及其相关文档")
+        print("  ✓ 知识库及其相关文档（通过 API）")
+        print("  ✓ rag_storage 中的知识库目录")
+        print("  ✓ temp_uploads 中的临时文件")
         print("  ✓ 向量数据库中的数据")
         print("  ✓ 图数据库中的数据（如使用）")
         print("\n未清理:")
