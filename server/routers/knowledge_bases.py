@@ -147,6 +147,8 @@ async def delete_knowledge_base_endpoint(
         )
     
     await delete_knowledge_base(db, kb)
+    
+    return {"message": "Knowledge base deleted successfully", "kb_id": str(kb_id)}
 
 
 @router.post("/{kb_id}/access", status_code=status.HTTP_201_CREATED)
