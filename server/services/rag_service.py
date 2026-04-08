@@ -589,10 +589,12 @@ async def process_document_with_raganything(
         logger.info(f"Initialized Embedding: {embedding_func}")
         
         # Create RAGAnything instance with model functions
+        # CRITICAL: Must pass workspace parameter for proper data isolation
         rag = RAGAnything(
             config=config,
             llm_model_func=llm_func,
-            embedding_func=embedding_func
+            embedding_func=embedding_func,
+            workspace=str(kb_id),  # Force correct workspace to match kb_id
         )
         
         # Process document
