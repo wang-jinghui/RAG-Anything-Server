@@ -80,6 +80,7 @@ async def query_knowledge_base(
                 query=query_data.query,
                 mode=query_data.mode.value,
                 top_k=query_data.top_k,
+                vlm_enhanced=query_data.vlm_enhanced,  # Pass VLM enhanced flag
                 # Note: max_tokens and temperature are not supported by LightRAG's QueryParam
                 # temperature=query_data.temperature,  # Removed
             )
