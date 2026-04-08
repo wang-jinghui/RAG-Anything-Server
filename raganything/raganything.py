@@ -32,7 +32,7 @@ from raganything.config import RAGAnythingConfig
 from raganything.query import QueryMixin
 from raganything.processor import ProcessorMixin
 from raganything.batch import BatchMixin
-from raganything.utils import get_processor_supports
+from raganything.utils import get_processor_supports, get_vision_model_func
 from raganything.parser import MineruParser, SUPPORTED_PARSERS, get_parser
 from raganything.callbacks import CallbackManager
 
@@ -122,6 +122,20 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
         if self.config is None:
             self.config = RAGAnythingConfig()
 
+        # Auto-load vision_model_func from environment variables if not provided
+        if self.vision_model_func is None:
+            import asyncio
+            try:
+                # Try to get vision_model_func from environment
+                loop = asyncio.get_running_loop()
+                # If we're in an async context, we need to handle this differently
+                # For now, we'll log that it needs to be set up later
+                # Note: logger will be initialized later, so we can't use it here yet
+            except RuntimeError:
+                # Not in async context, we can initialize synchronously
+                pass
+            # Note: The actual async initialization will happen in _ensure_lightrag_initialized
+
         # Compute namespace prefix for multi-tenancy
         if self.kb_id:
             self.namespace_prefix = f"kb_{self.kb_id}"
@@ -165,6 +179,7 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
             f"Equation: {self.config.enable_equation_processing}"
         )
         self.logger.info(f"  Max concurrent files: {self.config.max_concurrent_files}")
+        self.logger.info(f"  Vision model func: {'Provided' if self.vision_model_func else 'Not provided (will check env vars)'}")
 
     def close(self):
         """Cleanup resources when object is destroyed.
@@ -284,6 +299,19 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
     async def _ensure_lightrag_initialized(self):
         """Ensure LightRAG instance is initialized, create if necessary"""
         try:
+            # Auto-load vision_model_func from environment variables if not provided
+            if self.vision_model_func is None:
+                self.logger.info("Checking for VLM configuration in environment variables...")
+                try:
+                    self.vision_model_func = await get_vision_model_func()
+                    if self.vision_model_func:
+                        self.logger.info("✓ Vision model function loaded from environment")
+                    else:
+                        self.logger.info("✗ No VLM configured (VLM_BINDING/VLM_MODEL/VLM_BINDING_HOST not set)")
+                except Exception as e:
+                    self.logger.warning(f"Failed to load vision_model_func from environment: {e}")
+                    self.vision_model_func = None
+            
             # Check parser installation first
             if not self._parser_installation_checked:
                 if not self.doc_parser.check_installation():
