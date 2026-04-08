@@ -4,8 +4,9 @@ Utility functions for RAGAnything
 Contains helper functions for content separation, text insertion, and other utilities
 """
 
+import os
 import base64
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional, Callable
 from pathlib import Path
 from lightrag.utils import logger
 
@@ -283,3 +284,139 @@ def get_processor_supports(proc_type: str) -> List[str]:
         ],
     }
     return supports_map.get(proc_type, ["Basic processing"])
+
+
+def get_vision_model_func() -> Optional[Callable]:
+    """
+    Create vision model function from environment variables.
+    
+    Checks for VLM_* environment variables and creates an appropriate
+    vision_model_func if configured. Returns None if no VLM is configured.
+    
+    Environment Variables:
+        VLM_BINDING: Vision model binding type (currently only 'ollama' supported)
+        VLM_MODEL: Vision model name (e.g., 'qwen3-vl:2b')
+        VLM_BINDING_HOST: VLM service URL (e.g., 'http://localhost:11434')
+        VLM_TIMEOUT: Request timeout in seconds (default: 60)
+    
+    Returns:
+        Callable or None: Vision model function if VLM is configured, None otherwise
+    """
+    # Check if VLM is configured
+    vlm_binding = os.getenv("VLM_BINDING", "").strip().lower()
+    vlm_model = os.getenv("VLM_MODEL", "").strip()
+    vlm_host = os.getenv("VLM_BINDING_HOST", "").strip()
+    vlm_timeout = int(os.getenv("VLM_TIMEOUT", "60"))
+    
+    # If any required variable is missing, return None
+    if not vlm_binding or not vlm_model or not vlm_host:
+        logger.info("VLM not configured (missing VLM_BINDING, VLM_MODEL, or VLM_BINDING_HOST)")
+        return None
+    
+    logger.info(f"Creating vision_model_func for {vlm_binding}/{vlm_model} at {vlm_host}")
+    
+    if vlm_binding == "ollama":
+        return _create_ollama_vision_func(vlm_model, vlm_host, vlm_timeout)
+    else:
+        logger.warning(f"Unsupported VLM binding: {vlm_binding}. Only 'ollama' is supported.")
+        return None
+
+
+async def _create_ollama_vision_func(model: str, host: str, timeout: int) -> Callable:
+    """
+    Create Ollama-based vision model function using OpenAI-compatible API.
+    
+    Args:
+        model: Ollama model name (e.g., 'qwen3-vl:2b')
+        host: Ollama service URL (e.g., 'http://localhost:11434')
+        timeout: Request timeout in seconds
+    
+    Returns:
+        Callable: Async function that can process both single image and multimodal messages
+    """
+    import aiohttp
+    import json
+    
+    # Use OpenAI-compatible endpoint
+    base_url = host.rstrip('/')
+    if not base_url.endswith('/v1'):
+        base_url = f"{base_url}/v1"
+    chat_url = f"{base_url}/chat/completions"
+    
+    async def ollama_vision_func(
+        prompt: str,
+        system_prompt: str = None,
+        history_messages: list = [],
+        image_data: str = None,
+        messages: list = None,
+        **kwargs
+    ) -> str:
+        """
+        Ollama vision model function supporting both single image and multimodal messages.
+        Uses OpenAI-compatible API format.
+        
+        Args:
+            prompt: Text prompt (used in single image mode)
+            system_prompt: System prompt
+            history_messages: Conversation history
+            image_data: Base64 encoded image (single image mode)
+            messages: Complete message list (multimodal mode)
+            **kwargs: Additional parameters
+        
+        Returns:
+            str: Model response text
+        """
+        
+        try:
+            if messages:
+                # Mode 2: Multimodal messages (for VLM enhanced query)
+                # Messages are already in OpenAI format
+                payload = {
+                    "model": model,
+                    "messages": messages,
+                    "stream": False,
+                }
+            elif image_data:
+                # Mode 1: Single image (for ImageModalProcessor)
+                # Build messages in OpenAI format
+                msg_list = []
+                if system_prompt:
+                    msg_list.append({"role": "system", "content": system_prompt})
+                
+                # Add user message with text and image
+                msg_list.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_data}"
+                            }
+                        }
+                    ]
+                })
+                
+                payload = {
+                    "model": model,
+                    "messages": msg_list,
+                    "stream": False,
+                }
+            else:
+                raise ValueError("Either image_data or messages must be provided")
+            
+            # Make request to Ollama OpenAI-compatible endpoint
+            async with aiohttp.ClientSession() as session:
+                async with session.post(chat_url, json=payload, timeout=timeout) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        raise Exception(f"Ollama API error: {resp.status} - {error_text}")
+                    
+                    result = await resp.json()
+                    return result["choices"][0]["message"]["content"]
+        
+        except Exception as e:
+            logger.error(f"Ollama vision model call failed: {e}")
+            raise
+    
+    return ollama_vision_func
