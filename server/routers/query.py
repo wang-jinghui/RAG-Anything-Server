@@ -218,3 +218,120 @@ async def query_all_knowledge_bases(
         processing_time_ms=processing_time,
         kb_ids=[kb.id for kb in kbs]
     )
+
+
+@router.post("/{kb_id}/multimodal-query", response_model=QueryResponse)
+async def multimodal_query_knowledge_base(
+    kb_id: UUID,
+    query_data: QueryRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session)
+):
+    """
+    Multimodal query with explicit content (images, tables, equations).
+    
+    This endpoint is designed for queries that include structured multimodal content.
+    Unlike the regular /query endpoint which automatically enhances with VLM,
+    this endpoint expects multimodal_content to be provided in the request.
+    
+    Examples:
+        # Query with table data
+        POST /api/v1/knowledge-bases/{kb_id}/multimodal-query
+        {
+            "query": "Compare these performance metrics",
+            "mode": "hybrid",
+            "multimodal_content": [{
+                "type": "table",
+                "table_data": "Method,Accuracy,Speed\nLightRAG,95.2%,120ms",
+                "table_caption": "Performance comparison"
+            }]
+        }
+        
+        # Query with equation
+        POST /api/v1/knowledge-bases/{kb_id}/multimodal-query
+        {
+            "query": "Explain this formula",
+            "mode": "hybrid",
+            "multimodal_content": [{
+                "type": "equation",
+                "latex": "E = mc^2",
+                "equation_caption": "Einstein's mass-energy equivalence"
+            }]
+        }
+    """
+    start_time = time.time()
+    
+    # Verify user has access to this KB
+    kb = await get_knowledge_base(db, kb_id, current_user)
+    if not kb:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Knowledge base not found or you don't have access"
+        )
+    
+    try:
+        # Get RAG manager
+        rag_manager = get_rag_manager()
+        
+        logger.info(f"Executing multimodal query: {query_data.query[:100]}...")
+        logger.info(f"Query mode: {query_data.mode.value}, top_k: {query_data.top_k}")
+        
+        # Check if multimodal_content is provided
+        if not query_data.multimodal_content:
+            logger.warning("No multimodal_content provided, falling back to regular query")
+            # Fall back to regular query
+            return await query_knowledge_base(kb_id, query_data, current_user, db)
+        
+        # Get or initialize RAG instance using context manager
+        async with rag_manager.get_rag_instance(kb) as rag:
+            
+            logger.debug(f"=== MULTIMODAL QUERY DEBUG INFO ===")
+            logger.debug(f"KB ID: {kb_id}")
+            logger.debug(f"Expected namespace: kb_{kb_id}")
+            logger.debug(f"RAG working_dir: {rag.working_dir}")
+            if hasattr(rag, 'lightrag') and rag.lightrag:
+                logger.debug(f"LightRAG initialized")
+            else:
+                logger.error("LightRAG not initialized!")
+            
+            # Execute multimodal query using aquery_with_multimodal
+            result = await rag.aquery_with_multimodal(
+                query=query_data.query,
+                multimodal_content=query_data.multimodal_content,
+                mode=query_data.mode.value,
+                top_k=query_data.top_k,
+            )
+            
+            logger.debug(f"Multimodal query completed. Result type: {type(result)}")
+            logger.debug(f"Result value: {repr(result)[:200] if result else 'None'}")
+            
+            # Extract answer from result
+            if isinstance(result, dict):
+                answer = result.get("answer", str(result))
+            elif isinstance(result, str):
+                answer = result
+            else:
+                answer = str(result)
+            
+            logger.info(f"Extracted answer: {repr(answer[:100] if answer else 'EMPTY')}")
+            
+            processing_time = (time.time() - start_time) * 1000
+            
+            return QueryResponse(
+                answer=answer,
+                sources=[],  # Will be populated when LightRAG returns chunk metadata
+                query_mode=query_data.mode.value,
+                processing_time_ms=processing_time,
+                kb_ids=[kb_id],
+                images=None  # Multimodal query doesn't return image references
+            )
+        
+    except Exception as e:
+        processing_time = (time.time() - start_time) * 1000
+        logger.error(f"Multimodal query failed after {processing_time:.2f}ms: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Query failed: {str(e)}"
+        )
