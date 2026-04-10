@@ -3,14 +3,10 @@
 
 时长：10-15 分钟
 覆盖内容:
-- 基本文本查询（验证 PAOLUR 模块描述检索）
-- VLM 增强查询 - 系统架构图理解（验证图片理解能力）
-- VLM 增强查询 - PAOLUR 闭环流程（验证流程图理解）
-- 对比分析（有无 VLM 的差异）
-
-测试文档：AI驱动的自适应业务识别.pdf
-- 包含系统架构图（展示六个模块：Plan/Act/Observe/Learn/Update/Report）
-- 包含 PAOLUR 闭环流程说明
+- 使用 /multimodal-query 端点进行多模态查询
+- 表格数据查询测试
+- 公式查询测试
+- 图片路径查询测试
 
 使用方法:
     python multimodal_query_demo.py
@@ -64,14 +60,14 @@ class MultimodalQueryDemo:
             # ========== 步骤 3: 检查知识库状态 ==========
             await self.step3_check_kb_status()
             
-            # ========== 步骤 4: 基本文本查询 ==========
-            await self.step4_basic_query()
+            # ========== 步骤 4: 表格数据查询 ==========
+            await self.step4_table_query()
             
-            # ========== 步骤 5: VLM 增强查询 - 图片内容 ==========
-            await self.step5_vlm_image_query()
+            # ========== 步骤 5: 公式查询 ==========
+            await self.step5_equation_query()
             
-            # ========== 步骤 6: VLM 增强查询 - 图表理解 ==========
-            await self.step6_vlm_chart_query()
+            # ========== 步骤 6: 图片路径查询 ==========
+            await self.step6_image_path_query()
             
             # ========== 步骤 7: 对比分析 ==========
             await self.step7_comparison()
@@ -185,280 +181,235 @@ class MultimodalQueryDemo:
         except Exception as e:
             self.logger.error(f"检查知识库状态失败：{e}")
     
-    async def step4_basic_query(self):
-        """步骤 4: 基本文本查询"""
-        print_section("步骤 4: 基本文本查询", "=")
+    async def step4_table_query(self):
+        """步骤 4: 表格数据查询"""
+        print_section("步骤 4: 表格数据查询", "=")
         
-        query_text = "AI驱动的自适应业务识别系统的六个主要模块（PAOLUR）分别是什么？每个模块的核心功能是什么？"
+        query_text = "比较这些性能指标与文档中提到的方法"
         self.logger.info(f"查询问题：{query_text}")
-        self.logger.info("查询模式：hybrid (不使用 VLM)")
-        self.logger.info("说明：此查询验证系统对文本内容的检索能力")
+        self.logger.info("查询模式：hybrid + 多模态内容（表格）")
+        self.logger.info("说明：此查询提供表格数据，让系统结合文档内容进行对比分析")
         
-        query_data = {
+        # 构造表格数据
+        table_data = """Method,Accuracy,Speed,Memory Usage
+LightRAG,95.2%,120ms,2.1GB
+GraphRAG,93.8%,180ms,3.5GB
+Naive RAG,89.5%,95ms,1.8GB"""
+        
+        query_payload = {
             "query": query_text,
             "mode": "hybrid",
-            "top_k": 5
+            "top_k": 5,
+            "multimodal_content": [{
+                "type": "table",
+                "table_data": table_data,
+                "table_caption": "不同 RAG 方法的性能对比"
+            }]
         }
         
         start_time = time.time()
         
         try:
             response = await self.client.post(
-                f"{API_PREFIX}/knowledge-bases/{self.kb_id}/query",
-                json=query_data
+                f"{API_PREFIX}/knowledge-bases/{self.kb_id}/multimodal-query",
+                json=query_payload
             )
             
             duration = time.time() - start_time
             
             answer = response.get("answer", "")
-            metadata = response.get("metadata", {})
             
-            self.results["basic"] = {
+            self.results["table"] = {
                 "query": query_text,
                 "answer": answer,
                 "duration": duration,
-                "metadata": metadata,
-                "has_images": False
+                "content_type": "table"
             }
             
             if answer:
-                self.logger.success(f"✓ 查询成功，耗时：{format_time(duration)}")
+                self.logger.success(f"✓ 表格查询成功，耗时：{format_time(duration)}")
                 
                 print_section("查询结果", "-")
                 print(f"{Colors.CYAN}{answer}{Colors.RESET}\n")
-                
-                # 显示元数据
-                if metadata:
-                    print_result("检索到的文档块数", metadata.get("chunks_count", 0))
-                    print_result("使用的 LLM", metadata.get("llm_model", "unknown"))
                     
             else:
                 self.logger.warning("⚠️  查询返回空答案")
                 
         except Exception as e:
-            self.logger.error(f"✗ 查询失败：{e}")
-            self.results["basic"] = {"error": str(e), "duration": time.time() - start_time}
-    
-    async def step5_vlm_image_query(self):
-        """步骤 5: VLM 增强查询 - 图片内容"""
-        print_section("步骤 5: VLM 增强查询 - 系统架构图理解", "=")
-        
-        query_text = "文档中的系统架构图展示了什么？请详细描述图中的六个模块（Plan/Act/Observe/Learn/Update/Report）以及它们之间的关系和数据流向。"
-        self.logger.info(f"查询问题：{query_text}")
-        self.logger.info("查询模式：hybrid + VLM 增强")
-        self.logger.info("说明：此查询会使用视觉语言模型理解系统架构图")
-        
-        query_data = {
-            "query": query_text,
-            "mode": "hybrid",
-            "top_k": 5,
-            "vlm_enhanced": True  # 启用 VLM 增强
-        }
-        
-        start_time = time.time()
-        
-        try:
-            response = await self.client.post(
-                f"{API_PREFIX}/knowledge-bases/{self.kb_id}/query",
-                json=query_data
-            )
-            
-            duration = time.time() - start_time
-            
-            answer = response.get("answer", "")
-            images = response.get("images", [])
-            metadata = response.get("metadata", {})
-            
-            self.results["vlm_image"] = {
-                "query": query_text,
-                "answer": answer,
-                "duration": duration,
-                "metadata": metadata,
-                "images": images,
-                "has_images": len(images) > 0
-            }
-            
-            if answer:
-                self.logger.success(f"✓ VLM 增强查询成功，耗时：{format_time(duration)}")
-                
-                print_section("VLM 查询结果", "-")
-                print(f"{Colors.CYAN}{answer}{Colors.RESET}\n")
-                
-                # 显示引用的图片
-                if images:
-                    print_section("引用的图片", "-")
-                    self.logger.info(f"找到 {len(images)} 张相关图片\n")
-                    
-                    for i, img in enumerate(images, 1):
-                        print(f"{Colors.YELLOW}图片 {i}:{Colors.RESET}")
-                        
-                        # 图片描述
-                        description = img.get("description", "无描述")
-                        print(f"  描述: {description[:200]}...")
-                        
-                        # 图片路径
-                        img_path = img.get("path", "")
-                        if img_path:
-                            print(f"  路径: {img_path}")
-                            
-                            # 检查文件是否存在
-                            from pathlib import Path as PPath
-                            if PPath(img_path).exists():
-                                file_size = PPath(img_path).stat().st_size
-                                print(f"  大小: {file_size / 1024:.2f} KB ✓")
-                            else:
-                                print(f"  大小: 文件不存在 ✗")
-                        
-                        print()
-                else:
-                    self.logger.warning("⚠️  未找到相关图片")
-                    self.logger.info("可能原因：")
-                    self.logger.info("  1. 文档中没有图片")
-                    self.logger.info("  2. 图片未被正确解析")
-                    self.logger.info("  3. 查询问题与图片内容不相关")
-                
-                # 显示元数据
-                if metadata:
-                    print_result("是否启用 VLM", metadata.get("vlm_enhanced", False))
-                    print_result("检索到的文档块数", metadata.get("chunks_count", 0))
-                    
-            else:
-                self.logger.warning("⚠️  查询返回空答案")
-                
-        except Exception as e:
-            self.logger.error(f"✗ VLM 增强查询失败：{e}")
+            self.logger.error(f"✗ 表格查询失败：{e}")
             import traceback
             if VERBOSE_MODE:
                 traceback.print_exc()
-            self.results["vlm_image"] = {"error": str(e), "duration": time.time() - start_time}
+            self.results["table"] = {"error": str(e), "duration": time.time() - start_time}
     
-    async def step6_vlm_chart_query(self):
-        """步骤 6: VLM 增强查询 - 流程理解"""
-        print_section("步骤 6: VLM 增强查询 - PAOLUR 闭环流程", "=")
+    async def step5_equation_query(self):
+        """步骤 5: 公式查询"""
+        print_section("步骤 5: 公式查询", "=")
         
-        query_text = "如果文档中有展示 PAOLUR 闭环流程的图表，请解释这个感知-推理-学习-报告循环是如何工作的？每个阶段如何与下一个阶段衔接？"
+        query_text = "解释这个公式的物理意义和应用场景"
         self.logger.info(f"查询问题：{query_text}")
-        self.logger.info("查询模式：hybrid + VLM 增强")
-        self.logger.info("说明：此查询专注于理解系统工作流程图")
+        self.logger.info("查询模式：hybrid + 多模态内容（公式）")
+        self.logger.info("说明：此查询提供 LaTeX 公式，让系统解释其含义")
         
-        query_data = {
+        query_payload = {
             "query": query_text,
             "mode": "hybrid",
             "top_k": 5,
-            "vlm_enhanced": True
+            "multimodal_content": [{
+                "type": "equation",
+                "latex": "E = mc^2",
+                "equation_caption": "爱因斯坦质能方程"
+            }]
         }
         
         start_time = time.time()
         
         try:
             response = await self.client.post(
-                f"{API_PREFIX}/knowledge-bases/{self.kb_id}/query",
-                json=query_data
+                f"{API_PREFIX}/knowledge-bases/{self.kb_id}/multimodal-query",
+                json=query_payload
             )
             
             duration = time.time() - start_time
             
             answer = response.get("answer", "")
-            images = response.get("images", [])
-            metadata = response.get("metadata", {})
             
-            self.results["vlm_chart"] = {
+            self.results["equation"] = {
                 "query": query_text,
                 "answer": answer,
                 "duration": duration,
-                "metadata": metadata,
-                "images": images,
-                "has_images": len(images) > 0
+                "content_type": "equation"
             }
             
             if answer:
-                self.logger.success(f"✓ 图表理解查询成功，耗时：{format_time(duration)}")
+                self.logger.success(f"✓ 公式查询成功，耗时：{format_time(duration)}")
                 
-                print_section("图表理解结果", "-")
+                print_section("查询结果", "-")
                 print(f"{Colors.CYAN}{answer}{Colors.RESET}\n")
-                
-                if images:
-                    print_section("分析的图表", "-")
-                    for i, img in enumerate(images, 1):
-                        description = img.get("description", "无描述")
-                        print(f"{Colors.YELLOW}图表 {i}:{Colors.RESET}")
-                        print(f"  {description[:300]}...\n")
-                
+                    
             else:
                 self.logger.warning("⚠️  查询返回空答案")
                 
         except Exception as e:
-            self.logger.error(f"✗ 图表理解查询失败：{e}")
-            self.results["vlm_chart"] = {"error": str(e), "duration": time.time() - start_time}
+            self.logger.error(f"✗ 公式查询失败：{e}")
+            self.results["equation"] = {"error": str(e), "duration": time.time() - start_time}
+    
+    async def step6_image_path_query(self):
+        """步骤 6: 图片路径查询"""
+        print_section("步骤 6: 图片路径查询", "=")
+        
+        query_text = "分析这张图片的内容"
+        self.logger.info(f"查询问题：{query_text}")
+        self.logger.info("查询模式：hybrid + 多模态内容（图片路径）")
+        self.logger.info("说明：此查询提供图片路径，让系统理解图片内容")
+        
+        # 注意：这里需要使用实际存在的图片路径
+        # 由于我们不知道具体有哪些图片，这里提供一个示例路径
+        # 实际使用时应该从文档中提取真实的图片路径
+        image_path = "./rag_storage/kb_test/output/images/test_image.png"
+        
+        query_payload = {
+            "query": query_text,
+            "mode": "hybrid",
+            "top_k": 5,
+            "multimodal_content": [{
+                "type": "image",
+                "img_path": image_path,
+                "image_caption": ["测试图片"]
+            }]
+        }
+        
+        start_time = time.time()
+        
+        try:
+            response = await self.client.post(
+                f"{API_PREFIX}/knowledge-bases/{self.kb_id}/multimodal-query",
+                json=query_payload
+            )
+            
+            duration = time.time() - start_time
+            
+            answer = response.get("answer", "")
+            
+            self.results["image"] = {
+                "query": query_text,
+                "answer": answer,
+                "duration": duration,
+                "content_type": "image",
+                "image_path": image_path
+            }
+            
+            if answer:
+                self.logger.success(f"✓ 图片查询成功，耗时：{format_time(duration)}")
+                
+                print_section("查询结果", "-")
+                print(f"{Colors.CYAN}{answer}{Colors.RESET}\n")
+                    
+            else:
+                self.logger.warning("⚠️  查询返回空答案")
+                self.logger.info("可能原因：图片路径不存在或无法访问")
+                
+        except Exception as e:
+            self.logger.error(f"✗ 图片查询失败：{e}")
+            self.logger.info("提示：图片路径可能不存在，这是预期的")
+            self.results["image"] = {"error": str(e), "duration": time.time() - start_time}
     
     async def step7_comparison(self):
         """步骤 7: 对比分析"""
         print_section("步骤 7: 查询模式对比", "=")
         
-        self.logger.info("对比基本查询和 VLM 增强查询的效果...\n")
+        self.logger.info("对比不同类型的多模态查询效果...\n")
         
         # 性能对比
         print("性能对比表:")
-        print("-" * 80)
-        print(f"{'查询类型':<20} {'耗时':<15} {'答案长度':<15} {'引用图片':<15} {'状态':<10}")
-        print("-" * 80)
+        print("-" * 70)
+        print(f"{'查询类型':<20} {'耗时':<15} {'答案长度':<15} {'状态'}")
+        print("-" * 70)
         
-        for mode_key, mode_name in [("basic", "基本查询"), ("vlm_image", "VLM-图片"), ("vlm_chart", "VLM-图表")]:
+        for mode_key, mode_name in [("table", "表格查询"), ("equation", "公式查询"), ("image", "图片查询")]:
             result = self.results.get(mode_key, {})
             
             if "error" in result:
                 status = "❌ 失败"
                 duration_str = format_time(result.get("duration", 0))
                 answer_len = 0
-                has_images = "N/A"
             else:
                 status = "✅ 成功"
                 duration_str = format_time(result.get("duration", 0))
                 answer_len = len(result.get("answer", ""))
-                has_images = f"{len(result.get('images', []))} 张" if result.get("has_images") else "0 张"
             
-            print(f"{mode_name:<20} {duration_str:<15} {answer_len:<15} {has_images:<15} {status:<10}")
+            print(f"{mode_name:<20} {duration_str:<15} {answer_len:<15} {status}")
         
-        print("-" * 80)
+        print("-" * 70)
         
         # 效果分析
         print("\n效果分析:")
         
-        basic_result = self.results.get("basic", {})
-        vlm_result = self.results.get("vlm_image", {})
+        success_count = sum(1 for r in self.results.values() if "error" not in r)
+        total_count = len(self.results)
         
-        if "error" not in basic_result and "error" not in vlm_result:
-            basic_answer = basic_result.get("answer", "")
-            vlm_answer = vlm_result.get("answer", "")
-            
-            print(f"\n1. 答案详细度对比:")
-            print(f"   • 基本查询: {len(basic_answer)} 字符")
-            print(f"   • VLM 查询: {len(vlm_answer)} 字符")
-            
-            if len(vlm_answer) > len(basic_answer) * 1.2:
-                print(f"   ✓ VLM 查询提供了更详细的回答 (+{len(vlm_answer) - len(basic_answer)} 字符)")
-                print(f"   ✓ VLM 能够理解架构图中的模块关系和数据流向")
-            elif len(vlm_answer) < len(basic_answer) * 0.8:
-                print(f"   ⚠️  VLM 查询的回答较短")
-            else:
-                print(f"   • 两者回答长度相近")
-            
-            print(f"\n2. 图片理解能力:")
-            if vlm_result.get("has_images"):
-                img_count = len(vlm_result.get('images', []))
-                print(f"   ✓ VLM 成功识别并描述了 {img_count} 张系统架构图")
-                print(f"   ✓ 图片路径正确，文件可访问")
-                print(f"   ✓ 能够解释 PAOLUR 六个模块的关系")
-            else:
-                print(f"   ⚠️  VLM 未找到相关图片")
-                print(f"   ℹ️  可能文档中没有系统架构图，或者图片未被正确解析")
-            
-            print(f"\n3. 适用场景:")
-            print(f"   • 基本查询: 适合检索 PAOLUR 模块的文本描述")
-            print(f"   • VLM 查询: 适合理解系统架构图和流程关系图")
-            print(f"   • 结合使用: 文本+图片双重验证，获得完整理解")
+        print(f"\n1. 成功率: {success_count}/{total_count} ({success_count/total_count*100:.0f}%)")
+        
+        print(f"\n2. 多模态内容支持:")
+        if "table" in self.results and "error" not in self.results["table"]:
+            print(f"   ✓ 表格查询成功 - 能够处理结构化表格数据")
         else:
-            print("   ⚠️  部分查询失败，无法进行完整对比")
+            print(f"   ⚠️  表格查询失败")
+        
+        if "equation" in self.results and "error" not in self.results["equation"]:
+            print(f"   ✓ 公式查询成功 - 能够解析和解释 LaTeX 公式")
+        else:
+            print(f"   ⚠️  公式查询失败")
+        
+        if "image" in self.results and "error" not in self.results["image"]:
+            print(f"   ✓ 图片查询成功 - 能够理解图片内容")
+        else:
+            print(f"   ℹ️  图片查询跳过或失败（可能需要有效的图片路径）")
+        
+        print(f"\n3. 适用场景:")
+        print(f"   • 表格查询: 适合对比分析结构化数据")
+        print(f"   • 公式查询: 适合解释数学公式和科学概念")
+        print(f"   • 图片查询: 适合理解图表、架构图等视觉内容")
     
     def summary(self):
         """总结"""
@@ -467,7 +418,7 @@ class MultimodalQueryDemo:
         self.logger.success("多模态查询功能演示所有步骤已完成")
         
         print("\n演示总结:")
-        print(f"  ✓ 测试的查询类型：3 种 (基本、VLM-图片、VLM-图表)")
+        print(f"  ✓ 测试的查询类型：3 种 (表格、公式、图片)")
         print(f"  ✓ 使用的知识库：{self.kb_id}")
         
         # 统计成功率
@@ -476,31 +427,16 @@ class MultimodalQueryDemo:
         
         print(f"  ✓ 查询成功率：{success_count}/{total_count} ({success_count/total_count*100:.0f}%)")
         
-        # 检查 VLM 功能
-        vlm_success = any(r.get("has_images") for r in self.results.values() if "error" not in r)
-        
         print("\n关键发现:")
-        print("  • 基本查询能够准确检索 PAOLUR 模块的文本描述")
-        print("  • VLM 增强查询可以理解和描述系统架构图")
-        print("  • 图片路径正确保存并可访问（rag_storage/kb_xxx/output/images/）")
-        print("  • VLM 能够生成详细的架构和流程说明")
-        
-        if vlm_success:
-            print("\n✓ VLM 集成验证成功！")
-            print("  - 系统架构图被正确解析和保存")
-            print("  - vision_model_func 能够访问图片文件")
-            print("  - 生成了有意义的架构图描述")
-            print("  - 能够解释模块间的关系和数据流向")
-        else:
-            print("\n⚠️  VLM 功能可能需要进一步检查")
-            print("  - 确认文档中包含系统架构图")
-            print("  - 检查服务器日志中的 VLM 调用信息")
-            print("  - 验证图片是否被 LocalMineruAPIParser 正确提取")
+        print("  • 多模态查询接口支持表格、公式、图片等多种内容类型")
+        print("  • 系统能够将多模态内容与文档知识结合进行分析")
+        print("  • 返回纯文本答案，不包含图片元数据")
+        print("  • 适用于需要结合外部数据进行查询的场景")
         
         print("\n下一步:")
-        print("  1. 尝试不同的查询问题")
+        print("  1. 尝试不同的多模态内容组合")
         print("  2. 调整 top_k 参数观察效果")
-        print("  3. 查看服务器日志了解 VLM 调用细节")
+        print("  3. 测试更复杂的表格和公式")
         print("  4. 清理数据：python demos/cleanup_demo.py")
         print()
 
@@ -516,8 +452,8 @@ if __name__ == "__main__":
     print(f"{Colors.YELLOW}预计时长：10-15 分钟{Colors.RESET}")
     print(f"{Colors.YELLOW}复杂度：★★☆☆☆{Colors.RESET}\n")
     print(f"{Colors.YELLOW}前置条件：{Colors.RESET}")
-    print(f"  • 已运行 test_vlm_api.py 上传带图片的文档")
+    print(f"  • 已启动服务器")
     print(f"  • 配置了 VLM 服务 (qwen3-vl:8b)")
-    print(f"  • 文档处理已完成\n")
+    print(f"  • 知识库中有已处理的文档\n")
     
     asyncio.run(main())
