@@ -122,7 +122,7 @@ class GrantAccessRequest(BaseModel):
 
 class RevokeAccessRequest(BaseModel):
     """Schema for revoking access from a user."""
-    user_id: UUID
+    user_email: EmailStr
 
 
 class KBUserResponse(BaseModel):
