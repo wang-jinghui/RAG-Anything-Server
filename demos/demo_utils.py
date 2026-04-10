@@ -136,9 +136,9 @@ class APIClient:
         """PUT 请求"""
         return await self.request("PUT", endpoint, json=json)
     
-    async def delete(self, endpoint: str) -> Dict[str, Any]:
+    async def delete(self, endpoint: str, json: Optional[Dict] = None) -> Dict[str, Any]:
         """DELETE 请求"""
-        return await self.request("DELETE", endpoint)
+        return await self.request("DELETE", endpoint, json=json)
 
 
 def format_time(seconds: float) -> str:
