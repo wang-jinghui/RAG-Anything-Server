@@ -3,6 +3,7 @@ Knowledge Base management routes.
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import List, Optional
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from server.schemas import (
     KnowledgeBaseUpdate,
     KnowledgeBaseResponse,
     GrantAccessRequest,
+    RevokeAccessRequest,
     KBUserResponse,
     AccessLevel
 )
@@ -197,10 +199,10 @@ async def grant_access_endpoint(
         )
 
 
-@router.delete("/{kb_id}/access/{user_id}", status_code=status.HTTP_200_OK)
+@router.delete("/{kb_id}/access", status_code=status.HTTP_200_OK)
 async def revoke_access_endpoint(
     kb_id: UUID,
-    user_id: UUID,
+    request: RevokeAccessRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session)
 ):
@@ -208,6 +210,7 @@ async def revoke_access_endpoint(
     Revoke access from a user for this knowledge base.
     
     Only owners can revoke access.
+    Accepts user_email instead of user_id for better UX.
     """
     kb = await get_knowledge_base(db, kb_id, current_user)
     
@@ -224,14 +227,26 @@ async def revoke_access_endpoint(
             detail="Only owners can revoke access"
         )
     
+    # Find user by email
+    result = await db.execute(
+        select(User).where(User.email == request.user_email)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with email {request.user_email} not found"
+        )
+    
     # Don't allow revoking owner's access
-    if user_id == kb.owner_id:
+    if user.id == kb.owner_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot revoke owner's access"
         )
     
-    success = await revoke_kb_access(db, kb, user_id)
+    success = await revoke_kb_access(db, kb, user.id)
     
     if not success:
         raise HTTPException(
