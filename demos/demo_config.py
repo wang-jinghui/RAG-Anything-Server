@@ -92,7 +92,7 @@ AUTO_CLEANUP = os.getenv("DEMO_AUTO_CLEANUP", "False").lower() == "false"
 
 # ==================== 超时配置 ====================
 # HTTP 请求超时（秒）
-HTTP_TIMEOUT = int(os.getenv("DEMO_HTTP_TIMEOUT", "30"))
+HTTP_TIMEOUT = int(os.getenv("DEMO_HTTP_TIMEOUT", "120"))  # Increased for VLM queries
 
 # 文档处理超时（秒）
 PROCESSING_TIMEOUT = int(os.getenv("DEMO_PROCESSING_TIMEOUT", "300"))
