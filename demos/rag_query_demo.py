@@ -149,7 +149,7 @@ class QueryDemo:
         """步骤 3: Naive 模式查询"""
         print_section("步骤 3: Naive 模式查询", "=")
         
-        query_text = "AI驱动的自适应业务识别系统的核心设计理念有哪些？"  # 具体问题，验证基本检索
+        query_text = "统计学有哪些流派？"  # 具体问题，验证基本检索
         self.logger.info(f"查询问题：{query_text}")
         self.logger.info("查询模式：naive (向量相似度搜索)")
         self.logger.info("适用场景：事实性问题、直接检索")
@@ -205,7 +205,7 @@ class QueryDemo:
         """步骤 4: Hybrid 模式查询"""
         print_section("步骤 4: Hybrid 模式查询", "=")
         
-        query_text = "系统架构中的 PAOLUR 流程具体指什么？每个步骤的作用是什么？"  # 具体问题，验证对比分析
+        query_text = "什么是最大似然估计？"  # 具体问题，验证对比分析
         self.logger.info(f"查询问题：{query_text}")
         self.logger.info("查询模式：hybrid (混合检索)")
         self.logger.info("适用场景：综合检索、平衡准确性和召回率")
