@@ -411,17 +411,35 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
                 "doc_status_storage": os.getenv("LIGHTRAG_DOC_STATUS_STORAGE", "JsonDocStatusStorage"),
             }
             
+            # Use custom IsolatedPGVectorStorage when using PostgreSQL
+            # This ensures proper workspace isolation for multi-tenant support
+            if lightrag_params["vector_storage"] == "PGVectorStorage":
+                # Import to register the custom storage class
+                from raganything.custom_storage import IsolatedPGVectorStorage
+                lightrag_params["vector_storage"] = "IsolatedPGVectorStorage"
+                self.logger.info("Using IsolatedPGVectorStorage for proper workspace isolation")
+            
             # Add explicit workspace override if provided
             if self.workspace:
                 lightrag_params["workspace"] = self.workspace
                 self.logger.info(f"Using explicit workspace: {self.workspace}")
                 
-                # Set environment variable before LightRAG initialization
-                # This ensures PGVectorStorage and other storages use the correct workspace
+                # CRITICAL: Clear ClientManager singleton before setting environment variables
+                # This ensures a fresh PostgreSQLDB instance will be created with the correct workspace
                 old_workspace = os.environ.get("WORKSPACE")
                 old_pg_workspace = os.environ.get("POSTGRES_WORKSPACE")
                 
-                # Set both WORKSPACE and POSTGRES_WORKSPACE for compatibility
+                try:
+                    from lightrag.kg.postgres_impl import ClientManager
+                    if "db" in ClientManager._instances and ClientManager._instances["db"] is not None:
+                        old_db_workspace = ClientManager._instances["db"].workspace
+                        self.logger.info(f"Clearing ClientManager db instance (old workspace: {old_db_workspace})")
+                        del ClientManager._instances["db"]
+                except Exception as e:
+                    self.logger.warning(f"Failed to clear ClientManager: {e}")
+                
+                # Set environment variable before LightRAG initialization
+                # This ensures PGVectorStorage and other storages use the correct workspace
                 os.environ["WORKSPACE"] = self.workspace
                 os.environ["POSTGRES_WORKSPACE"] = self.workspace
                 self.logger.info(f"Set WORKSPACE={self.workspace}, POSTGRES_WORKSPACE={self.workspace}")
@@ -430,7 +448,11 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
                 if "vector_db_storage_cls_kwargs" not in lightrag_params:
                     lightrag_params["vector_db_storage_cls_kwargs"] = {}
                 lightrag_params["vector_db_storage_cls_kwargs"]["workspace"] = self.workspace
-                self.logger.info(f"Added workspace to vector_db_storage_cls_kwargs: {self.workspace}")
+                
+                # Add cosine threshold from environment variable (default: 0.2)
+                cosine_threshold = float(os.getenv("COSINE_THRESHOLD", "0.2"))
+                lightrag_params["vector_db_storage_cls_kwargs"]["cosine_better_than_threshold"] = cosine_threshold
+                self.logger.info(f"Added workspace and cosine_threshold={cosine_threshold} to vector_db_storage_cls_kwargs")
             
             # Debug: Log embedding function details
             self.logger.info(f"\n=== EMBEDDING FUNC DEBUG ===")
