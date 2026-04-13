@@ -185,11 +185,22 @@ class RAGInstanceManager:
         
         # Create RAGAnything instance - ONLY pass config and function refs
         # Following the official documentation pattern
+        
+        # Read cache configuration from environment variables
+        import os
+        enable_llm_cache = os.getenv("ENABLE_LLM_CACHE", "true").lower() == "true"
+        # Entity extract cache is safe to keep enabled (per-KB operation, no cross-tenant leakage)
+        enable_llm_cache_for_extract = os.getenv("ENABLE_LLM_CACHE_FOR_EXTRACT", "true").lower() == "true"
+        
         rag = RAGAnything(
             config=raganything_config,
             llm_model_func=llm_model_func or self._default_llm_func(config),
             embedding_func=embedding_func or self._default_embedding_func(config),
             workspace=forced_workspace,  # Force correct workspace for data isolation
+            lightrag_kwargs={
+                "enable_llm_cache": enable_llm_cache,
+                "enable_llm_cache_for_entity_extract": enable_llm_cache_for_extract,
+            }
         )
         
         # Initialize LightRAG
