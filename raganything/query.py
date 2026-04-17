@@ -10,7 +10,7 @@ import re
 import time
 from typing import Dict, List, Any
 from pathlib import Path
-from lightrag import QueryParam
+from lightrag.lightrag import QueryParam
 from lightrag.utils import always_get_an_event_loop
 from raganything.prompt import PROMPTS
 from raganything.utils import (
