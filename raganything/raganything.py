@@ -24,8 +24,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # The OS environment variables take precedence over the .env file
 load_dotenv(dotenv_path=".env", override=False)
 
-from lightrag import LightRAG
-from lightrag.utils import logger
+# Import from local lightrag submodule (not installed package)
+from lightrag.lightrag import LightRAG
+from lightrag.lightrag.utils import logger
 
 # Import configuration and modules
 from raganything.config import RAGAnythingConfig
@@ -411,32 +412,16 @@ class RAGAnything(QueryMixin, ProcessorMixin, BatchMixin):
                 "doc_status_storage": os.getenv("LIGHTRAG_DOC_STATUS_STORAGE", "JsonDocStatusStorage"),
             }
             
-            # Use custom IsolatedPGVectorStorage when using PostgreSQL
-            # This ensures proper workspace isolation for multi-tenant support
-            if lightrag_params["vector_storage"] == "PGVectorStorage":
-                # Import to register the custom storage class
-                from raganything.custom_storage import IsolatedPGVectorStorage
-                lightrag_params["vector_storage"] = "IsolatedPGVectorStorage"
-                self.logger.info("Using IsolatedPGVectorStorage for proper workspace isolation")
-            
             # Add explicit workspace override if provided
+            old_workspace = None
+            old_pg_workspace = None
             if self.workspace:
                 lightrag_params["workspace"] = self.workspace
                 self.logger.info(f"Using explicit workspace: {self.workspace}")
                 
-                # CRITICAL: Clear ClientManager singleton before setting environment variables
-                # This ensures a fresh PostgreSQLDB instance will be created with the correct workspace
+                # Save original environment variables
                 old_workspace = os.environ.get("WORKSPACE")
                 old_pg_workspace = os.environ.get("POSTGRES_WORKSPACE")
-                
-                try:
-                    from lightrag.kg.postgres_impl import ClientManager
-                    if "db" in ClientManager._instances and ClientManager._instances["db"] is not None:
-                        old_db_workspace = ClientManager._instances["db"].workspace
-                        self.logger.info(f"Clearing ClientManager db instance (old workspace: {old_db_workspace})")
-                        del ClientManager._instances["db"]
-                except Exception as e:
-                    self.logger.warning(f"Failed to clear ClientManager: {e}")
                 
                 # Set environment variable before LightRAG initialization
                 # This ensures PGVectorStorage and other storages use the correct workspace
