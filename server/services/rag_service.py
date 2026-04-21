@@ -517,11 +517,10 @@ async def process_document_with_raganything(
             
             # CRITICAL: Use consistent namespace for upload and query
             # Must use "kb_{kb_id}" format, not kb.lightrag_namespace_prefix
-            namespace = f"kb_{kb_id}"
+            # namespace is calculated internally from kb.id in get_rag_instance()
             
             async with rag_manager.get_rag_instance(
                 kb, 
-                namespace=namespace,  # Force correct namespace
                 parser_override='mineru',  # Use MinerU for all files
                 llm_model_func=llm_func,
                 embedding_func=embedding_func
