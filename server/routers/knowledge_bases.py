@@ -1,15 +1,17 @@
 """
 Knowledge Base management routes.
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import List, Optional
 from uuid import UUID
 
 from server.models.database import get_db_session
 from server.models.user import User
 from server.models.knowledge_base import KnowledgeBase
+from server.models.kb_document import KBDocument
 from server.schemas import (
     KnowledgeBaseCreate,
     KnowledgeBaseUpdate,
@@ -28,8 +30,9 @@ from server.services.kb_service import (
     delete_knowledge_base,
     grant_kb_access,
     revoke_kb_access,
-    get_kb_users
 )
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/knowledge-bases", tags=["Knowledge Bases"])
@@ -87,6 +90,20 @@ async def get_knowledge_base_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Knowledge base not found or you don't have access"
         )
+    
+    # Real-time calculation of document count to ensure accuracy
+    stmt = select(func.count()).select_from(KBDocument).where(
+        KBDocument.knowledge_base_id == kb_id,
+        KBDocument.upload_status == 'completed'
+    )
+    result = await db.execute(stmt)
+    actual_doc_count = result.scalar() or 0
+    
+    # Update the document_count field to keep it in sync
+    if kb.document_count != actual_doc_count:
+        logger.info(f"Fixing document count for KB {kb_id}: {kb.document_count} -> {actual_doc_count}")
+        kb.document_count = actual_doc_count
+        await db.commit()
     
     return kb
 
