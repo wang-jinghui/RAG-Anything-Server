@@ -372,6 +372,31 @@ class LocalMineruAPIParser(Parser):
         # Treat image as PDF for parsing (MinerU supports image files)
         return self.parse_pdf(image_path, output_dir, method="ocr", lang=lang, **kwargs)
 
+    def parse_office_doc(
+        self,
+        doc_path: Union[str, Path],
+        output_dir: Optional[str] = None,
+        lang: Optional[str] = None,
+        **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        Parse Office document (DOCX, PPTX, XLSX, etc.) using local MinerU API.
+        
+        MinerU 3.0 natively supports Office document formats, so we can directly
+        send them to the API without conversion.
+        
+        Args:
+            doc_path: Path to the Office document file
+            output_dir: Output directory
+            lang: Language code
+            **kwargs: Additional parameters
+            
+        Returns:
+            List of content block dictionaries
+        """
+        # MinerU 3.0 supports Office documents natively, treat same as PDF
+        return self.parse_pdf(doc_path, output_dir, method="auto", lang=lang, **kwargs)
+
     def parse_document(
         self,
         file_path: Union[str, Path],
