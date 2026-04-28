@@ -94,6 +94,13 @@ async def _process_document_background(
                 doc.upload_status = "completed"
                 doc.lightrag_doc_id = result['doc_id']
                 doc.processed_at = datetime.utcnow()
+                
+                # Update knowledge base document count
+                kb = await db.get(KnowledgeBase, doc.kb_id)
+                if kb:
+                    kb.document_count += 1
+                    logger.info(f"Updated KB {kb.id} document count to {kb.document_count}")
+                
                 await db.commit()
                 logger.info(f"Document {doc_id} marked as completed")
         else:
@@ -439,6 +446,10 @@ async def delete_document(
         # Delete temporary file if exists
         if doc.file_path and os.path.exists(doc.file_path):
             os.remove(doc.file_path)
+        
+        # Update knowledge base document count before deleting
+        kb.document_count = max(0, kb.document_count - 1)
+        logger.info(f"Updated KB {kb.id} document count to {kb.document_count}")
         
         # Delete document record
         await db.delete(doc)
