@@ -56,6 +56,32 @@ async def list_knowledge_bases(
     kbs = await get_user_knowledge_bases(
         db, current_user, skip=skip, limit=limit, status_filter=status_filter
     )
+    
+    # Batch update document counts for all KBs in the list
+    if kbs:
+        kb_ids = [kb.id for kb in kbs]
+        
+        # Single query to get document counts for all KBs
+        stmt = (
+            select(KBDocument.knowledge_base_id, func.count())
+            .where(
+                KBDocument.knowledge_base_id.in_(kb_ids),
+                KBDocument.upload_status == 'completed'
+            )
+            .group_by(KBDocument.knowledge_base_id)
+        )
+        result = await db.execute(stmt)
+        doc_counts = dict(result.all())
+        
+        # Update each KB's document_count if different
+        for kb in kbs:
+            actual_count = doc_counts.get(kb.id, 0)
+            if kb.document_count != actual_count:
+                logger.info(f"Fixing document count for KB {kb.id}: {kb.document_count} -> {actual_count}")
+                kb.document_count = actual_count
+        
+        await db.commit()
+    
     return kbs
 
 
