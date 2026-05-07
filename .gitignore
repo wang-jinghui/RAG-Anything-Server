@@ -6,6 +6,7 @@ __pycache__/
 *.tgz
 *.tar.gz
 *.ini
+!alembic.ini
 
 # Virtual Environment
 .venv/
