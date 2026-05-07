@@ -1,0 +1,58 @@
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.github/
+.gitmodules
+
+# 测试和文档
+tests/
+demos/
+examples/
+docs/
+*.md
+!README.md
+
+# 临时文件和数据目录（通过 volume 挂载）
+temp_uploads/
+rag_storage/
+mineru_output/
+test_*
+*.log
+.env
+.env.test
+
+# 导出的依赖文件（仅用于构建参考）
+requirements-export.txt
+
+# Docker 相关文件
+.dockerignore
+docker-compose.yaml
+docker-compose.yml
+Dockerfile
+
+# 其他
+nul
+out/
+*.json
+!pyproject.toml
