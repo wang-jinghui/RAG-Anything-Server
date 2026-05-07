@@ -1,0 +1,151 @@
+version: '3.8'
+
+services:
+  # RAG-Anything Server
+  rag-server:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-anything-server
+    ports:
+      - "8000:8000"
+    environment:
+      # 服务器配置
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=False
+      
+      # 数据库配置
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/raganything
+      - DATABASE_POOL_SIZE=10
+      - DATABASE_MAX_OVERFLOW=20
+      
+      # JWT 配置（生产环境请修改）
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - REFRESH_TOKEN_EXPIRE_DAYS=7
+      
+      # API Key Settings
+      - API_KEY_PREFIX=rak_
+      
+      # CORS & Security
+      - CORS_ORIGINS=["http://localhost:3000","http://localhost:8080"]
+      - RATE_LIMIT_PER_MINUTE=60
+      - MAX_FILE_SIZE_MB=50
+      
+      # LLM 配置
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - LLM_TEMPERATURE=0.7
+      - LLM_MAX_TOKENS=4096
+      
+      # Embedding 配置
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-openai}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-large}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-3072}
+      - EMBEDDING_BATCH_SIZE=32
+      
+      # Ranking Model (Optional)
+      - RANK_ENABLED=false
+      - RANK_MODEL_NAME=BAAI/bge-m3
+      - RANK_TOP_K=10
+      
+      # 向量存储配置
+      - VECTOR_STORAGE_TYPE=pgvector
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=raganything
+      
+      # 图数据库配置
+      - GRAPH_STORAGE_TYPE=neo4j
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+      
+      # MinerU 配置
+      - PARSER_METHOD=mineru
+      - MINERU_MODE=${MINERU_MODE:-local}
+      - ENABLE_IMAGE_PROCESSING=true
+      - ENABLE_OCR=true
+      - MINERU_CONFIG=default
+      
+      # RAG 配置
+      - RAG_WORKING_DIR=/app/rag_storage
+      - CHUNK_TOKEN_SIZE=1200
+      - CHUNK_OVERLAP_TOKEN_SIZE=100
+      - DEFAULT_QUERY_MODE=hybrid
+      - DEFAULT_TOP_K=10
+      
+      # 日志配置
+      - LOG_LEVEL=INFO
+      - RAG_LOG_LEVEL=INFO
+    volumes:
+      - ./rag_storage:/app/rag_storage
+      - ./temp_uploads:/app/temp_uploads
+      - ./mineru_output:/app/mineru_output
+    depends_on:
+      db:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  # PostgreSQL 数据库（带 pgvector 扩展）
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: rag-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=raganything
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  # Neo4j 图数据库
+  neo4j:
+    image: neo4j:5.15
+    container_name: rag-neo4j
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-password}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-password}", "RETURN 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+
+networks:
+  rag-network:
+    driver: bridge
