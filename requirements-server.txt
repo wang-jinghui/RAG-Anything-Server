@@ -1,81 +1,81 @@
 # Web Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-python-multipart==0.0.6
+fastapi==0.135.2
+uvicorn==0.42.0
+python-multipart==0.0.22
 
 # Database
-sqlalchemy[asyncio]==2.0.25
-asyncpg==0.29.0
+sqlalchemy==2.0.48
+asyncpg==0.31.0
 psycopg2-binary==2.9.9
 alembic==1.13.1
+pgvector==0.4.2
 
 # Authentication
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+python-jose==3.5.0
+passlib==1.7.4
 bcrypt==4.1.2
 
 # Validation & Settings
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic==2.11.10
+pydantic-settings==2.13.1
 
 # Rate Limiting
 slowapi==0.1.9
 
 # Async HTTP Client (for remote API calls)
-aiohttp>=3.9.0
+aiohttp==3.13.3
 
 # Testing
-pytest==7.4.4
-pytest-asyncio==0.23.3
-httpx==0.26.0
+pytest==9.0.2
+pytest-asyncio==1.3.0
+httpx==0.28.1
 
 # ===========================================
 # RAG Processing (Optional - for document processing & querying)
 # ===========================================
 # Core RAG library
-raganything>=0.1.0
-lightrag-hku==1.4.11
+# Note: lightrag-hku is installed from local submodule (see Dockerfile)
+# lightrag-hku==1.4.11
 
 # LLM clients (choose based on your provider)
-openai>=1.0.0  # OpenAI, Azure, vLLM, LM Studio
-# ollama>=0.1.0  # Ollama (uncomment if using)
+openai==2.30.0
+ollama==0.6.1
 
-# Document parsing (MinerU is default)
-mineru[core]>=0.8.0
+# Document parsing via API (MinerU API mode)
+# Note: When using MINERU_MODE=local_api or remote, mineru package is NOT required
+# Only aiohttp (above) is needed for API calls
+# mineru==2.7.6  # Uncomment only if using MINERU_MODE=local (subprocess)
 
-# Optional: Alternative parsers
-# docling>=2.0.0  # IBM Docling parser
-# paddleocr>=2.7.0  # OCR support
-# pypdfium2>=4.0.0  # PDF rendering for OCR
+# Optional: Alternative parsers (only if not using MinerU API)
+# docling==2.84.0
+# paddleocr==3.4.0
+# pypdfium2==4.30.0
 
 # Image processing
-Pillow>=10.0.0
+pillow==11.3.0
 
 # Text to PDF (for text file processing)
-reportlab>=4.0.0
+reportlab==4.4.10
 
 # Markdown processing
-markdown>=3.5.0
-weasyprint>=60.0  # For markdown to PDF
-pygments>=2.17.0  # Syntax highlighting
-
-# Optional: Re-ranking (improves retrieval quality)
-# FlagEmbedding>=1.2.0  # BGE re-ranking models
+markdown==3.10.2
+weasyprint==68.1
+pygments==2.19.2
 
 # Optional: Progress bars
-tqdm>=4.66.0
+tqdm==4.67.3
 
 # ===========================================
 # Vector Database Clients (choose one)
 # ===========================================
 # PGVector (PostgreSQL with vector support)
-# Already included via psycopg2-binary above
+# Already included via pgvector above
 
 # Milvus (alternative vector DB)
-# pymilvus>=2.3.0
+# pymilvus>=2.6.2
 
 # Qdrant (alternative vector DB)
-# qdrant-client>=1.7.0
+# qdrant-client>=1.11.0
 
 # Chroma (simple local vector DB, good for dev)
 # chromadb>=0.4.0
@@ -84,7 +84,7 @@ tqdm>=4.66.0
 # Graph Database Clients (for knowledge graph)
 # ===========================================
 # Neo4j (default graph storage)
-neo4j>=5.0.0
+neo4j==6.1.0
 
 # Apache AGE (PostgreSQL-based graph, alternative to Neo4j)
 # age>=1.0.0
