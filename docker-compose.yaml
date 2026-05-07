@@ -16,7 +16,7 @@ services:
       - DEBUG=False
       
       # 数据库配置
-      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/raganything
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin_2617}@db:5432/${POSTGRES_DATABASE:-raganything_test}
       - DATABASE_POOL_SIZE=10
       - DATABASE_MAX_OVERFLOW=20
       
