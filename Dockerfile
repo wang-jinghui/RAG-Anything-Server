@@ -45,6 +45,9 @@ COPY scripts/ ./scripts/
 # 复制配置文件示例
 COPY .env.example .env
 
+# 设置入口脚本权限
+RUN chmod +x ./scripts/entrypoint.sh
+
 # 创建必要的目录
 RUN mkdir -p rag_storage temp_uploads mineru_output
 
@@ -55,5 +58,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-# 启动命令
-CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 使用入口脚本启动（自动运行数据库迁移）
+ENTRYPOINT ["./scripts/entrypoint.sh"]
