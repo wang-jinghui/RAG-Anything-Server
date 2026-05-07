@@ -1,0 +1,118 @@
+version: '3.8'
+
+# 开发环境 Docker Compose 配置
+# 仅启动 rag-server 容器，其他服务（PostgreSQL、Neo4j）使用 .env 中配置的外部服务
+
+services:
+  # RAG-Anything Server
+  rag-server:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-anything-server-dev
+    ports:
+      - "8000:8000"
+    environment:
+      # 服务器配置
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=True
+      
+      # 数据库配置（从 .env 读取外部服务器地址）
+      - DATABASE_URL=${DATABASE_URL}
+      
+      # JWT 配置
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      
+      # API Key Settings
+      - API_KEY_PREFIX=${API_KEY_PREFIX:-rak_}
+      
+      # CORS & Security
+      - CORS_ORIGINS=${CORS_ORIGINS:-["*"]}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-50}
+      
+      # LLM 配置 (使用 Ollama)
+      - LLM_BINDING=${LLM_BINDING:-ollama}
+      - LLM_MODEL=${LLM_MODEL:-qwen3:1.7b}
+      - LLM_BINDING_HOST=${LLM_BINDING_HOST:-http://192.168.254.44:11434}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-120}
+      - LLM_THINK=${LLM_THINK:-false}
+      
+      # Embedding 配置 (使用 Ollama)
+      - EMBEDDING_BINDING=${EMBEDDING_BINDING:-ollama}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-qwen3-embedding:0.6b}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-1024}
+      - EMBEDDING_BINDING_HOST=${EMBEDDING_BINDING_HOST:-http://192.168.254.44:11434}
+      - EMBEDDING_TIMEOUT=${EMBEDDING_TIMEOUT:-30}
+      
+      # VLM 配置 (使用 Ollama)
+      - VLM_BINDING=${VLM_BINDING:-ollama}
+      - VLM_MODEL=${VLM_MODEL:-qwen3-vl:8b}
+      - VLM_BINDING_HOST=${VLM_BINDING_HOST:-http://192.168.254.44:11434}
+      - VLM_TIMEOUT=${VLM_TIMEOUT:-120}
+      
+      # LightRAG 存储配置
+      - LIGHTRAG_VECTOR_STORAGE=${LIGHTRAG_VECTOR_STORAGE:-PGVectorStorage}
+      - LIGHTRAG_GRAPH_STORAGE=${LIGHTRAG_GRAPH_STORAGE:-Neo4JStorage}
+      - LIGHTRAG_KV_STORAGE=${LIGHTRAG_KV_STORAGE:-PGKVStorage}
+      - LIGHTRAG_DOC_STATUS_STORAGE=${LIGHTRAG_DOC_STATUS_STORAGE:-PGDocStatusStorage}
+      
+      # PostgreSQL 配置（外部服务器）
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DATABASE=${POSTGRES_DATABASE}
+      - POSTGRES_WORKSPACE=${POSTGRES_WORKSPACE:-default}
+      
+      # Neo4j 配置（外部服务器）
+      - NEO4J_URI=${NEO4J_URI}
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      - NEO4J_DATABASE=${NEO4J_DATABASE:-neo4j}
+      
+      # MinerU 配置
+      - PARSER_METHOD=${PARSER_METHOD:-mineru}
+      - MINERU_MODE=${MINERU_MODE:-local_api}
+      - MINERU_LOCAL_API_URL=${MINERU_LOCAL_API_URL}
+      - MINERU_OUTPUT_DIR=/app/mineru_output
+      - MINERU_CONFIG=${MINERU_CONFIG:-default}
+      - ENABLE_IMAGE_PROCESSING=${ENABLE_IMAGE_PROCESSING:-true}
+      - ENABLE_OCR=${ENABLE_OCR:-true}
+      
+      # LLM Cache 配置
+      - ENABLE_LLM_CACHE=${ENABLE_LLM_CACHE:-false}
+      
+      # 向量相似度阈值
+      - COSINE_THRESHOLD=${COSINE_THRESHOLD:-0.2}
+      
+      # RAG 配置
+      - RAG_WORKING_DIR=/app/rag_storage
+      - CHUNK_TOKEN_SIZE=${CHUNK_TOKEN_SIZE:-1200}
+      - CHUNK_OVERLAP_TOKEN_SIZE=${CHUNK_OVERLAP_TOKEN_SIZE:-100}
+      - DEFAULT_QUERY_MODE=${DEFAULT_QUERY_MODE:-hybrid}
+      - DEFAULT_TOP_K=${DEFAULT_TOP_K:-10}
+      
+      # 日志配置
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - RAG_LOG_LEVEL=${RAG_LOG_LEVEL:-INFO}
+    
+    volumes:
+      - ./rag_storage:/app/rag_storage
+      - ./temp_uploads:/app/temp_uploads
+      - ./mineru_output:/app/mineru_output
+    
+    # 不依赖其他容器，直接使用外部服务
+    # depends_on: 不需要
+    
+    restart: unless-stopped
+    networks:
+      - rag-network-dev
+
+networks:
+  rag-network-dev:
+    driver: bridge
