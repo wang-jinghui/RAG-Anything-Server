@@ -52,6 +52,20 @@ if (-Not (Test-Path ".env")) {
 }
 
 # 询问用户操作
+Write-Host "请选择部署环境:" -ForegroundColor Cyan
+Write-Host "D. 开发环境（仅 rag-server，使用外部服务）" -ForegroundColor Yellow
+Write-Host "P. 生产环境（完整栈：rag-server + db + neo4j）" -ForegroundColor Green
+$env_choice = Read-Host "请输入选项 (D/P)"
+
+if ($env_choice -eq "D" -or $env_choice -eq "d") {
+    $COMPOSE_FILE = "docker-compose.dev.yaml"
+    Write-Host "✅ 选择: 开发环境" -ForegroundColor Green
+} else {
+    $COMPOSE_FILE = "docker-compose.yaml"
+    Write-Host "✅ 选择: 生产环境" -ForegroundColor Green
+}
+
+Write-Host ""
 Write-Host "请选择操作:" -ForegroundColor Cyan
 Write-Host "1. 构建并启动所有服务" -ForegroundColor White
 Write-Host "2. 仅启动已构建的服务" -ForegroundColor White
@@ -67,11 +81,11 @@ switch ($choice) {
     "1" {
         Write-Host ""
         Write-Host "🔨 正在构建 Docker 镜像..." -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD build"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE build"
         
         Write-Host ""
         Write-Host "🚀 正在启动服务..." -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD up -d"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE up -d"
         
         Write-Host ""
         Write-Host "⏳ 等待服务启动..." -ForegroundColor Cyan
@@ -79,7 +93,7 @@ switch ($choice) {
         
         Write-Host ""
         Write-Host "📊 服务状态:" -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD ps"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE ps"
         
         Write-Host ""
         Write-Host "✅ 部署完成！" -ForegroundColor Green
@@ -87,27 +101,29 @@ switch ($choice) {
         Write-Host "访问以下地址:" -ForegroundColor Cyan
         Write-Host "  - API 文档: http://localhost:8000/docs" -ForegroundColor White
         Write-Host "  - 健康检查: http://localhost:8000/health" -ForegroundColor White
-        Write-Host "  - Neo4j Browser: http://localhost:7474" -ForegroundColor White
+        if ($env_choice -ne "D" -and $env_choice -ne "d") {
+            Write-Host "  - Neo4j Browser: http://localhost:7474" -ForegroundColor White
+        }
         Write-Host ""
         Write-Host "下一步: 运行数据库迁移" -ForegroundColor Yellow
-        Write-Host "  $COMPOSE_CMD exec rag-server alembic upgrade head" -ForegroundColor White
-        Write-Host "  $COMPOSE_CMD exec rag-server python scripts/create_super_admin.py" -ForegroundColor White
+        Write-Host "  $COMPOSE_CMD -f $COMPOSE_FILE exec rag-server alembic upgrade head" -ForegroundColor White
+        Write-Host "  $COMPOSE_CMD -f $COMPOSE_FILE exec rag-server python scripts/create_super_admin.py" -ForegroundColor White
     }
     
     "2" {
         Write-Host ""
         Write-Host "🚀 正在启动服务..." -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD up -d"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE up -d"
         
         Write-Host ""
         Write-Host "✅ 服务已启动" -ForegroundColor Green
-        Invoke-Expression "$COMPOSE_CMD ps"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE ps"
     }
     
     "3" {
         Write-Host ""
         Write-Host "🛑 正在停止服务..." -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD down"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE down"
         
         Write-Host ""
         Write-Host "✅ 服务已停止（数据已保留）" -ForegroundColor Green
@@ -119,7 +135,7 @@ switch ($choice) {
         $confirm = Read-Host "确定要继续吗？(yes/no)"
         if ($confirm -eq "yes") {
             Write-Host "🗑️  正在停止并删除所有服务和数据..." -ForegroundColor Cyan
-            Invoke-Expression "$COMPOSE_CMD down -v"
+            Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE down -v"
             
             Write-Host ""
             Write-Host "✅ 所有服务和数据已删除" -ForegroundColor Green
@@ -131,23 +147,23 @@ switch ($choice) {
     "5" {
         Write-Host ""
         Write-Host "📊 服务状态:" -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD ps"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE ps"
     }
     
     "6" {
         Write-Host ""
         Write-Host "📋 显示应用日志 (Ctrl+C 退出):" -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD logs -f rag-server"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE logs -f rag-server"
     }
     
     "7" {
         Write-Host ""
         Write-Host "🔧 正在初始化数据库..." -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD exec rag-server alembic upgrade head"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE exec rag-server alembic upgrade head"
         
         Write-Host ""
         Write-Host "👤 正在创建超级管理员..." -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD exec rag-server python scripts/create_super_admin.py"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE exec rag-server python scripts/create_super_admin.py"
         
         Write-Host ""
         Write-Host "✅ 数据库初始化完成" -ForegroundColor Green
@@ -156,7 +172,7 @@ switch ($choice) {
     "8" {
         Write-Host ""
         Write-Host "🔨 正在重新构建镜像（无缓存）..." -ForegroundColor Cyan
-        Invoke-Expression "$COMPOSE_CMD build --no-cache"
+        Invoke-Expression "$COMPOSE_CMD -f $COMPOSE_FILE build --no-cache"
         
         Write-Host ""
         Write-Host "✅ 构建完成" -ForegroundColor Green

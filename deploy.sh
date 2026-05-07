@@ -48,6 +48,20 @@ if [ ! -f .env ]; then
 fi
 
 # 询问用户操作
+echo "请选择部署环境:"
+echo "D. 开发环境（仅 rag-server，使用外部服务）"
+echo "P. 生产环境（完整栈：rag-server + db + neo4j）"
+read -p "请输入选项 (D/P): " env_choice
+
+if [ "$env_choice" = "D" ] || [ "$env_choice" = "d" ]; then
+    COMPOSE_FILE="docker-compose.dev.yaml"
+    echo "✅ 选择: 开发环境"
+else
+    COMPOSE_FILE="docker-compose.yaml"
+    echo "✅ 选择: 生产环境"
+fi
+
+echo ""
 echo "请选择操作:"
 echo "1. 构建并启动所有服务"
 echo "2. 仅启动已构建的服务"
@@ -63,11 +77,11 @@ case $choice in
     1)
         echo ""
         echo "🔨 正在构建 Docker 镜像..."
-        $COMPOSE_CMD build
+        $COMPOSE_CMD -f $COMPOSE_FILE build
         
         echo ""
         echo "🚀 正在启动服务..."
-        $COMPOSE_CMD up -d
+        $COMPOSE_CMD -f $COMPOSE_FILE up -d
         
         echo ""
         echo "⏳ 等待服务启动..."
@@ -75,7 +89,7 @@ case $choice in
         
         echo ""
         echo "📊 服务状态:"
-        $COMPOSE_CMD ps
+        $COMPOSE_CMD -f $COMPOSE_FILE ps
         
         echo ""
         echo "✅ 部署完成！"
@@ -83,27 +97,34 @@ case $choice in
         echo "访问以下地址:"
         echo "  - API 文档: http://localhost:8000/docs"
         echo "  - 健康检查: http://localhost:8000/health"
-        echo "  - Neo4j Browser: http://localhost:7474"
+        if [ "$COMPOSE_FILE" = "docker-compose.yaml" ]; then
+            echo "  - Neo4j Browser: http://localhost:7474"
+        fi
         echo ""
-        echo "下一步: 运行数据库迁移"
-        echo "  $COMPOSE_CMD exec rag-server alembic upgrade head"
-        echo "  $COMPOSE_CMD exec rag-server python scripts/create_super_admin.py"
+        
+        if [ "$COMPOSE_FILE" = "docker-compose.dev.yaml" ]; then
+            echo "⚠️  开发环境需要手动初始化数据库:"
+            echo "  $COMPOSE_CMD -f $COMPOSE_FILE exec rag-server python -c \"from server.models.database import init_db; import asyncio; asyncio.run(init_db())\""
+            echo "  $COMPOSE_CMD -f $COMPOSE_FILE exec rag-server python scripts/create_super_admin.py"
+        else
+            echo "✅ 生产环境已自动初始化数据库"
+        fi
         ;;
         
     2)
         echo ""
         echo "🚀 正在启动服务..."
-        $COMPOSE_CMD up -d
+        $COMPOSE_CMD -f $COMPOSE_FILE up -d
         
         echo ""
         echo "✅ 服务已启动"
-        $COMPOSE_CMD ps
+        $COMPOSE_CMD -f $COMPOSE_FILE ps
         ;;
         
     3)
         echo ""
         echo "🛑 正在停止服务..."
-        $COMPOSE_CMD down
+        $COMPOSE_CMD -f $COMPOSE_FILE down
         
         echo ""
         echo "✅ 服务已停止（数据已保留）"
@@ -115,7 +136,7 @@ case $choice in
         read -p "确定要继续吗？(yes/no): " confirm
         if [ "$confirm" = "yes" ]; then
             echo "🗑️  正在停止并删除所有服务和数据..."
-            $COMPOSE_CMD down -v
+            $COMPOSE_CMD -f $COMPOSE_FILE down -v
             
             echo ""
             echo "✅ 所有服务和数据已删除"
@@ -127,23 +148,23 @@ case $choice in
     5)
         echo ""
         echo "📊 服务状态:"
-        $COMPOSE_CMD ps
+        $COMPOSE_CMD -f $COMPOSE_FILE ps
         ;;
         
     6)
         echo ""
         echo "📋 显示应用日志 (Ctrl+C 退出):"
-        $COMPOSE_CMD logs -f rag-server
+        $COMPOSE_CMD -f $COMPOSE_FILE logs -f rag-server
         ;;
         
     7)
         echo ""
-        echo "🔧 正在初始化数据库..."
-        $COMPOSE_CMD exec rag-server alembic upgrade head
+        echo "🔧 正在初始化数据库（创建表结构）..."
+        $COMPOSE_CMD -f $COMPOSE_FILE exec rag-server python -c "from server.models.database import init_db; import asyncio; asyncio.run(init_db())"
         
         echo ""
         echo "👤 正在创建超级管理员..."
-        $COMPOSE_CMD exec rag-server python scripts/create_super_admin.py
+        $COMPOSE_CMD -f $COMPOSE_FILE exec rag-server python scripts/create_super_admin.py
         
         echo ""
         echo "✅ 数据库初始化完成"
@@ -152,7 +173,7 @@ case $choice in
     8)
         echo ""
         echo "🔨 正在重新构建镜像（无缓存）..."
-        $COMPOSE_CMD build --no-cache
+        $COMPOSE_CMD -f $COMPOSE_FILE build --no-cache
         
         echo ""
         echo "✅ 构建完成"
