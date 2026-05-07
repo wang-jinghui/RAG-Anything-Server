@@ -34,45 +34,56 @@ services:
       - RATE_LIMIT_PER_MINUTE=60
       - MAX_FILE_SIZE_MB=50
       
-      # LLM 配置
-      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      - LLM_TEMPERATURE=0.7
-      - LLM_MAX_TOKENS=4096
+      # LLM 配置 (使用 Ollama)
+      - LLM_BINDING=ollama
+      - LLM_MODEL=${LLM_MODEL:-qwen3:1.7b}
+      - LLM_BINDING_HOST=${LLM_BINDING_HOST:-http://192.168.254.44:11434}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-120}
+      - LLM_THINK=${LLM_THINK:-false}
       
-      # Embedding 配置
-      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-openai}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-large}
-      - EMBEDDING_DIM=${EMBEDDING_DIM:-3072}
-      - EMBEDDING_BATCH_SIZE=32
+      # Embedding 配置 (使用 Ollama)
+      - EMBEDDING_BINDING=ollama
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-qwen3-embedding:0.6b}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-1024}
+      - EMBEDDING_BINDING_HOST=${EMBEDDING_BINDING_HOST:-http://192.168.254.44:11434}
+      - EMBEDDING_TIMEOUT=${EMBEDDING_TIMEOUT:-30}
       
-      # Ranking Model (Optional)
-      - RANK_ENABLED=false
-      - RANK_MODEL_NAME=BAAI/bge-m3
-      - RANK_TOP_K=10
+      # VLM 配置 (使用 Ollama)
+      - VLM_BINDING=ollama
+      - VLM_MODEL=${VLM_MODEL:-qwen3-vl:8b}
+      - VLM_BINDING_HOST=${VLM_BINDING_HOST:-http://192.168.254.44:11434}
+      - VLM_TIMEOUT=${VLM_TIMEOUT:-120}
       
-      # 向量存储配置
-      - VECTOR_STORAGE_TYPE=pgvector
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_HOST=db
+      # 向量存储配置 (使用 PostgreSQL + pgvector)
+      - LIGHTRAG_VECTOR_STORAGE=PGVectorStorage
+      - POSTGRES_HOST=db  # Docker 内部服务名
       - POSTGRES_PORT=5432
-      - POSTGRES_DATABASE=raganything
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-admin_2617}
+      - POSTGRES_DATABASE=${POSTGRES_DATABASE:-raganything_test}
+      - POSTGRES_WORKSPACE=${POSTGRES_WORKSPACE:-default}
       
-      # 图数据库配置
-      - GRAPH_STORAGE_TYPE=neo4j
-      - NEO4J_URI=bolt://neo4j:7687
-      - NEO4J_USER=neo4j
-      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+      # 图数据库配置 (使用 Neo4j)
+      - LIGHTRAG_GRAPH_STORAGE=Neo4JStorage
+      - NEO4J_URI=bolt://neo4j:7687  # Docker 内部服务名
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-neo4j_password}
+      - NEO4J_DATABASE=neo4j
       
       # MinerU 配置
       - PARSER_METHOD=mineru
-      - MINERU_MODE=${MINERU_MODE:-local}
+      - MINERU_MODE=${MINERU_MODE:-local_api}
+      - MINERU_LOCAL_API_URL=${MINERU_LOCAL_API_URL:-http://vip.xg.frp.one:39800/}
+      - MINERU_OUTPUT_DIR=/app/mineru_output
+      - MINERU_CONFIG=default
       - ENABLE_IMAGE_PROCESSING=true
       - ENABLE_OCR=true
-      - MINERU_CONFIG=default
+      
+      # LLM Cache 配置
+      - ENABLE_LLM_CACHE=${ENABLE_LLM_CACHE:-false}
+      
+      # 向量相似度阈值
+      - COSINE_THRESHOLD=${COSINE_THRESHOLD:-0.2}
       
       # RAG 配置
       - RAG_WORKING_DIR=/app/rag_storage
@@ -102,15 +113,15 @@ services:
     image: pgvector/pgvector:pg16
     container_name: rag-postgres
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=raganything
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-admin_2617}
+      - POSTGRES_DB=${POSTGRES_DATABASE:-raganything_test}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -120,10 +131,10 @@ services:
 
   # Neo4j 图数据库
   neo4j:
-    image: neo4j:5.15
+    image: neo4j:5.26.17
     container_name: rag-neo4j
     environment:
-      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-password}
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-neo4j_password}
       - NEO4J_PLUGINS=["apoc"]
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
     ports:
@@ -133,7 +144,7 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
     healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-password}", "RETURN 1"]
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-neo4j_password}", "RETURN 1"]
       interval: 10s
       timeout: 10s
       retries: 10
