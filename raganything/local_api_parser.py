@@ -62,7 +62,7 @@ class LocalMineruAPIParser(Parser):
     async def _call_api(
         self,
         file_path: Path,
-        backend: str = "hybrid-auto-engine",
+        backend: str = "pipeline",
         parse_method: str = "auto",
         lang_list: List[str] = ["ch"],
         return_md: bool = True,
@@ -314,7 +314,7 @@ class LocalMineruAPIParser(Parser):
             # Always enable return_images to get base64 image data (same as MinerU CLI saves images)
             api_response = asyncio.run(self._call_api(
                 file_path=pdf_path,
-                backend=kwargs.get('backend', 'hybrid-auto-engine'),
+                backend=kwargs.get('backend', 'pipeline'),
                 parse_method=method,
                 lang_list=lang_list,
                 return_md=True,
