@@ -6,6 +6,7 @@ Usage:
 """
 import asyncio
 import sys
+import os
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy import select
 
@@ -21,10 +22,8 @@ async def create_super_admin(email: str, username: str, password: str):
     """Create a super admin user."""
     
     # Create engine and tables
-    engine = create_async_engine(
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/raganything",
-        echo=True
-    )
+    database_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://admin:admin_2617@db:5432/raganything_test")
+    engine = create_async_engine(database_url, echo=True)
     
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
