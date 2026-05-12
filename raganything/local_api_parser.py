@@ -311,10 +311,13 @@ class LocalMineruAPIParser(Parser):
         
         # Call API asynchronously
         try:
+            # Extract backend from kwargs to avoid duplicate argument
+            backend = kwargs.pop('backend', 'pipeline')
+            
             # Always enable return_images to get base64 image data (same as MinerU CLI saves images)
             api_response = asyncio.run(self._call_api(
                 file_path=pdf_path,
-                backend=kwargs.get('backend', 'pipeline'),
+                backend=backend,
                 parse_method=method,
                 lang_list=lang_list,
                 return_md=True,
