@@ -30,16 +30,6 @@ from demo_utils import (
     format_time,
     Colors
 )
-from demo_config import (
-    SERVER_HOST,
-    API_PREFIX,
-    USER_A_EMAIL,
-    USER_A_PASSWORD,
-    USER_A_NAME,
-    KB_A_NAME,
-    KB_A_DESCRIPTION,
-    VERBOSE_MODE,
-)
 
 
 async def main(file_paths: list):
@@ -55,9 +45,13 @@ async def main(file_paths: list):
         print_section("步骤 1: 系统检查", "=")
         
         client = APIClient(SERVER_HOST)  # 使用默认 60 秒超时
+        logger.info(f"服务器地址: {SERVER_HOST}")
+        logger.info(f"API 前缀: {API_PREFIX}")
         
         # 检查服务器是否运行
         try:
+            health_url = f"{SERVER_HOST}/health"
+            logger.info(f"请求健康检查: {health_url}")
             health_data = await client.get("/health")
             logger.success("[OK] 服务器运行正常")
             if VERBOSE_MODE:
@@ -293,7 +287,30 @@ if __name__ == "__main__":
         default=["test.pdf"],
         help="要上传的文件路径列表（默认：test.pdf）"
     )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default=None,
+        help="服务器地址（默认：从 demo_config 读取）"
+    )
     args = parser.parse_args()
+    
+    # 如果指定了 host，在导入 demo_config 之前设置环境变量
+    if args.host:
+        import os
+        os.environ['SERVER_HOST'] = args.host
+    
+    # 现在导入 demo_config，它会读取环境变量
+    from demo_config import (
+        SERVER_HOST,
+        API_PREFIX,
+        USER_A_EMAIL,
+        USER_A_PASSWORD,
+        USER_A_NAME,
+        KB_A_NAME,
+        KB_A_DESCRIPTION,
+        VERBOSE_MODE,
+    )
     
     # 如果没有指定文件或使用默认值，检查 test.pdf 位置
     if args.files == ["test.pdf"]:
