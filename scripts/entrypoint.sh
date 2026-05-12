@@ -12,32 +12,30 @@ echo "=========================================="
 echo ""
 echo "⏳ 等待 PostgreSQL 就绪..."
 for i in $(seq 1 30); do
-    if python -c "
-import asyncio
-from sqlalchemy.ext.asyncio import create_async_engine
-import os
-
-async def check_db():
-    try:
-        # 使用环境变量中的 DATABASE_URL
-        db_url = os.getenv('DATABASE_URL', 'postgresql+asyncpg://admin:admin_2617@db:5432/raganything_test')
-        engine = create_async_engine(db_url)
-        async with engine.connect() as conn:
-            await conn.execute(asyncio.wrap_future(lambda: None))
-        await engine.dispose()
-        return True
-    except:
-        return False
-
-import sys
-sys.exit(0 if asyncio.run(check_db()) else 1)
-" 2>/dev/null; then
-        echo "✅ PostgreSQL 已就绪"
-        break
+    # 使用 nc (netcat) 测试端口
+    if command -v nc &> /dev/null; then
+        # 从 DATABASE_URL 提取主机和端口
+        DB_HOST=$(echo $DATABASE_URL | sed 's|.*@\([^:]*\):.*|\1|')
+        DB_PORT=$(echo $DATABASE_URL | sed 's|.*:\([0-9]*\)/.*|\1|')
+        
+        if nc -z -w2 "$DB_HOST" "$DB_PORT" 2>/dev/null; then
+            echo "✅ PostgreSQL 已就绪 ($DB_HOST:$DB_PORT)"
+            break
+        fi
+    else
+        # 使用 bash /dev/tcp 测试
+        DB_HOST=$(echo $DATABASE_URL | sed 's|.*@\([^:]*\):.*|\1|')
+        DB_PORT=$(echo $DATABASE_URL | sed 's|.*:\([0-9]*\)/.*|\1|')
+        
+        if (echo > /dev/tcp/$DB_HOST/$DB_PORT) 2>/dev/null; then
+            echo "✅ PostgreSQL 已就绪 ($DB_HOST:$DB_PORT)"
+            break
+        fi
     fi
     
     if [ $i -eq 30 ]; then
         echo "❌ PostgreSQL 连接超时"
+        echo "DATABASE_URL: $DATABASE_URL"
         exit 1
     fi
     
