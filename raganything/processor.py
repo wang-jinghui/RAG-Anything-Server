@@ -363,6 +363,12 @@ class ProcessorMixin:
 
             if ext in [".pdf"]:
                 self.logger.info("Detected PDF file, using parser for PDF...")
+                # Add backend from environment variable if not already in kwargs
+                if 'backend' not in kwargs:
+                    mineru_backend = os.getenv('MINERU_BACKEND')
+                    if mineru_backend:
+                        kwargs['backend'] = mineru_backend
+                
                 content_list = await asyncio.to_thread(
                     doc_parser.parse_pdf,
                     pdf_path=file_path,
