@@ -6,10 +6,10 @@ version: '3.8'
 services:
   # RAG-Anything Server
   rag-server:
-    build: 
-      context: .
-      dockerfile: Dockerfile
+    image: rag-anything-server:latest  # 使用已构建的镜像
     container_name: rag-anything-server-dev
+    env_file:
+      - .env  # 显式加载 .env 文件
     ports:
       - "8000:8000"
     environment:
@@ -110,9 +110,4 @@ services:
     # depends_on: 不需要
     
     restart: unless-stopped
-    networks:
-      - rag-network-dev
-
-networks:
-  rag-network-dev:
-    driver: bridge
+    # 使用默认网络，可以直接访问外部 IP
